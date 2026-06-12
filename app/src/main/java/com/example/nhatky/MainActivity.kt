@@ -1,0 +1,72 @@
+package com.example.nhatky
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import com.example.nhatky.ui.screens.DiaryListScreen
+import com.example.nhatky.ui.screens.LoginScreen
+import com.example.nhatky.ui.screens.RegisterScreen
+import com.example.nhatky.ui.theme.Theme
+import com.example.nhatky.viewmodel.AuthViewModel
+import com.example.nhatky.viewmodel.DiaryViewModel
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent {
+            Theme {
+                AppNavigation()
+            }
+        }
+    }
+}
+
+@Composable
+fun AppNavigation() {
+    val navController = rememberNavController()
+    val authViewModel: AuthViewModel = viewModel()
+    val diaryViewModel: DiaryViewModel = viewModel()
+    val user by authViewModel.currentUser.collectAsState()
+
+    // Determine starting destination
+    val startDestination = if (user == null) "login" else "diary_list"
+
+    NavHost(navController = navController, startDestination = startDestination) {
+        composable("login") {
+            LoginScreen(
+                viewModel = authViewModel,
+                onLoginSuccess = {
+                    navController.navigate("diary_list") {
+                        popUpTo("login") { inclusive = true }
+                    }
+                },
+                onNavigateToRegister = {
+                    navController.navigate("register")
+                }
+            )
+        }
+        composable("register") {
+            RegisterScreen(
+                viewModel = authViewModel,
+                onRegisterSuccess = {
+                    navController.navigate("diary_list") {
+                        popUpTo("login") { inclusive = true }
+                    }
+                },
+                onBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+        composable("diary_list") {
+            DiaryListScreen(authViewModel, diaryViewModel)
+        }
+    }
+}

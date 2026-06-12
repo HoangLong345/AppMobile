@@ -1,0 +1,27 @@
+# Build artifacts
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Google Services (Firebase) - HIGHLY RECOMMENDED TO EXCLUDE
+# If your repo is public, hackers can use your API keys.
+# Your team members should get this file via a secure channel (Slack, Drive, etc.)
+app/google-services.json
+
+# Secrets management
+secrets.properties
+*.keystore
+!debug.keystore
+*.hprof
