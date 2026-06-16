@@ -98,7 +98,11 @@ fun LoginScreen(viewModel: AuthViewModel, onLoginSuccess: () -> Unit, onNavigate
                     .requestEmail()
                     .build()
                 val googleSignInClient = GoogleSignIn.getClient(context, gso)
-                googleSignInLauncher.launch(googleSignInClient.signInIntent)
+                
+                // Đảm bảo luôn hiện bảng chọn tài khoản bằng cách logout trước khi login
+                googleSignInClient.signOut().addOnCompleteListener {
+                    googleSignInLauncher.launch(googleSignInClient.signInIntent)
+                }
             },
             modifier = Modifier.fillMaxWidth()
         ) {
