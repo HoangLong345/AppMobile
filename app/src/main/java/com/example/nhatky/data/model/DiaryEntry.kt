@@ -8,6 +8,9 @@ data class DiaryEntry(
     val userId: String = "",
     val title: String = "",
     val content: String = "",
+    val mood: String = "Normal", // Vui, Buồn, Bình thường, v.v.
+    val tags: List<String> = emptyList(),
+    val mediaUrls: List<String> = emptyList(),
     @ServerTimestamp
     val timestamp: Date? = null
 )

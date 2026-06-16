@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">NhatKy</string>
+    <!-- TODO: Replace with your actual Web Client ID from Firebase Console -->
+    <string name="default_web_client_id">352973995238-qiijsuhld48tf2bml3at76cgk8ksqlgd.apps.googleusercontent.com</string>
 </resources>

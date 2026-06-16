@@ -6,7 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -16,7 +16,9 @@ import com.example.nhatky.ui.screens.RegisterScreen
 import com.example.nhatky.ui.theme.Theme
 import com.example.nhatky.viewmodel.AuthViewModel
 import com.example.nhatky.viewmodel.DiaryViewModel
+import dagger.hilt.android.AndroidEntryPoint
 
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -31,8 +33,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
-    val authViewModel: AuthViewModel = viewModel()
-    val diaryViewModel: DiaryViewModel = viewModel()
+    val authViewModel: AuthViewModel = hiltViewModel()
+    val diaryViewModel: DiaryViewModel = hiltViewModel()
     val user by authViewModel.currentUser.collectAsState()
 
     // Determine starting destination
