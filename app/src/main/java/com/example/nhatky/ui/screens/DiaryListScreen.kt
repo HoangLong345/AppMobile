@@ -25,9 +25,20 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.request.CachePolicy
+import coil.size.Size
 import com.example.nhatky.viewmodel.AuthViewModel
 import com.example.nhatky.viewmodel.DiaryViewModel
+import com.example.nhatky.data.model.DiaryEntry
 import java.io.ByteArrayOutputStream
+import android.content.ContentResolver
+import android.webkit.MimeTypeMap
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.material.icons.filled.Close
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -89,9 +100,18 @@ fun DiaryListScreen(authViewModel: AuthViewModel, diaryViewModel: DiaryViewModel
                         
                         diary.mediaUrls.forEach { url ->
                             AsyncImage(
-                                model = url,
+                                model = ImageRequest.Builder(LocalContext.current)
+                                    .data(url)
+                                    .crossfade(true)
+                                    .size(Size.ORIGINAL) // Or a specific size if you want to cap it
+                                    .memoryCachePolicy(CachePolicy.ENABLED)
+                                    .diskCachePolicy(CachePolicy.ENABLED)
+                                    .build(),
                                 contentDescription = null,
-                                modifier = Modifier.fillMaxWidth().height(200.dp).padding(top = 8.dp)
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(200.dp)
+                                    .padding(top = 8.dp)
                             )
                         }
                     }
@@ -102,8 +122,8 @@ fun DiaryListScreen(authViewModel: AuthViewModel, diaryViewModel: DiaryViewModel
         if (showDialog) {
             AddDiaryDialog(
                 onDismiss = { showDialog = false },
-                onAdd = { title, content, mood, tags, imageUri ->
-                    user?.uid?.let { diaryViewModel.addDiary(it, title, content, mood, tags, imageUri) }
+                onAdd = { title, content, mood, tags, mediaItems ->
+                    user?.uid?.let { diaryViewModel.addDiaryWithMedia(it, title, content, mood, tags, mediaItems) }
                     showDialog = false
                 }
             )
@@ -112,20 +132,37 @@ fun DiaryListScreen(authViewModel: AuthViewModel, diaryViewModel: DiaryViewModel
 }
 
 @Composable
-fun AddDiaryDialog(onDismiss: () -> Unit, onAdd: (String, String, String, List<String>, Uri?) -> Unit) {
+fun AddDiaryDialog(onDismiss: () -> Unit, onAdd: (String, String, String, List<String>, List<Pair<Uri, Boolean>>) -> Unit) {
     var title by remember { mutableStateOf("") }
     var content by remember { mutableStateOf("") }
     var mood by remember { mutableStateOf("Bình thường") }
     var tagsString by remember { mutableStateOf("") }
-    var capturedImageUri by remember { mutableStateOf<Uri?>(null) }
-    var capturedBitmap by remember { mutableStateOf<Bitmap?>(null) }
-    
+
+    // Danh sách lưu trữ các tệp media đã chọn: Pair(Uri, IsVideo)
+    val chosenMediaList = remember { mutableStateListOf<Pair<Uri, Boolean>>() }
     val context = LocalContext.current
-    
-    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
+
+    // Hàm phụ kiểm tra xem một Uri có phải là Video hay không
+    fun isVideoUri(uri: Uri): Boolean {
+        return context.contentResolver.getType(uri)?.startsWith("video") == true
+    }
+
+    // 1. Launcher chụp ảnh từ Camera
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicturePreview()
+    ) { bitmap ->
         if (bitmap != null) {
-            capturedBitmap = bitmap
-            capturedImageUri = getImageUriFromBitmap(context, bitmap)
+            val uri = getImageUriFromBitmap(context, bitmap) // Hàm helper chuyển đổi bitmap có sẵn của bạn
+            chosenMediaList.add(Pair(uri, false))
+        }
+    }
+
+    // 2. Launcher chọn ảnh bằng PhotoPicker (Hỗ trợ chọn nhiều hoặc 1 ảnh)
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 5)
+    ) { uris ->
+        uris.forEach { uri ->
+            chosenMediaList.add(Pair(uri, isVideoUri(uri)))
         }
     }
 
@@ -134,11 +171,11 @@ fun AddDiaryDialog(onDismiss: () -> Unit, onAdd: (String, String, String, List<S
         title = { Text("Viết nhật ký mới") },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Tiêu đề") })
+                OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Tiêu đề") }, modifier = Modifier.fillMaxWidth())
                 Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(value = content, onValueChange = { content = it }, label = { Text("Nội dung") })
+                OutlinedTextField(value = content, onValueChange = { content = it }, label = { Text("Nội dung") }, modifier = Modifier.fillMaxWidth())
                 Spacer(modifier = Modifier.height(8.dp))
-                
+
                 Text("Cảm xúc hôm nay:")
                 Row {
                     listOf("Vui", "Bình thường", "Buồn").forEach { m ->
@@ -148,33 +185,96 @@ fun AddDiaryDialog(onDismiss: () -> Unit, onAdd: (String, String, String, List<S
                         }
                     }
                 }
-                
+
                 OutlinedTextField(
-                    value = tagsString, 
-                    onValueChange = { tagsString = it }, 
+                    value = tagsString,
+                    onValueChange = { tagsString = it },
                     label = { Text("Thẻ (phân cách bằng dấu phẩy)") },
-                    placeholder = { Text("gia đình, học tập...") }
+                    placeholder = { Text("gia đình, học tập...") },
+                    modifier = Modifier.fillMaxWidth()
                 )
-                
+
                 Spacer(modifier = Modifier.height(16.dp))
-                
-                Button(onClick = { cameraLauncher.launch() }) {
-                    Text("Chụp ảnh")
+
+                // Các nút điều khiển chọn phương tiện truyền thông
+                Text("Đính kèm phương tiện:", style = MaterialTheme.typography.titleSmall)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(onClick = { cameraLauncher.launch() }, modifier = Modifier.weight(1f)) {
+                        Text("Chụp ảnh", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Button(
+                        onClick = {
+                            photoPickerLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
+                            )
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Chọn tệp", style = MaterialTheme.typography.bodySmall)
+                    }
                 }
-                
-                capturedBitmap?.let {
-                    Image(
-                        bitmap = it.asImageBitmap(),
-                        contentDescription = null,
-                        modifier = Modifier.size(100.dp).padding(top = 8.dp)
-                    )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Hiển thị danh sách ảnh/video preview đã chọn dạng lưới nhỏ gọn
+                if (chosenMediaList.isNotEmpty()) {
+                    Text("Đã chọn (${chosenMediaList.size}):", style = MaterialTheme.typography.bodySmall)
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Box(modifier = Modifier.height(120.dp).fillMaxWidth()) {
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(3),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            items(chosenMediaList) { (uri, isVideo) ->
+                                Box(modifier = Modifier.size(100.dp)) {
+                                    if (isVideo) {
+                                        // Preview đơn giản cho Video (Hiển thị icon hoặc text video)
+                                        Surface(
+                                            modifier = Modifier.fillMaxSize(),
+                                            color = MaterialTheme.colorScheme.surfaceVariant
+                                        ) {
+                                            Box(contentAlignment = androidx.compose.ui.Alignment.Center) {
+                                                Text("📹 Video", style = MaterialTheme.typography.labelSmall)
+                                            }
+                                        }
+                                    } else {
+                                        // Preview cho Ảnh bằng AsyncImage của Coil
+                                        AsyncImage(
+                                            model = ImageRequest.Builder(LocalContext.current)
+                                                .data(uri)
+                                                .crossfade(true)
+                                                .size(200, 200) // Resize for small preview
+                                                .memoryCachePolicy(CachePolicy.ENABLED)
+                                                .build(),
+                                            contentDescription = null,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
+
+                                    // Nút xóa nhanh phương tiện khỏi danh sách chọn
+                                    FilledIconButton(
+                                        onClick = { chosenMediaList.remove(Pair(uri, isVideo)) },
+                                        modifier = Modifier.size(24.dp).align(androidx.compose.ui.Alignment.TopEnd),
+                                        colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.error)
+                                    ) {
+                                        Icon(Icons.Default.Close, contentDescription = "Xóa", modifier = Modifier.size(14.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         },
         confirmButton = {
-            Button(onClick = { 
+            Button(onClick = {
                 val tags = tagsString.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-                onAdd(title, content, mood, tags, capturedImageUri) 
+                onAdd(title, content, mood, tags, chosenMediaList.toList())
             }) { Text("Thêm") }
         },
         dismissButton = {
