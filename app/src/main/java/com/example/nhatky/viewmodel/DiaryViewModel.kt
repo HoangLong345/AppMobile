@@ -39,17 +39,23 @@ class DiaryViewModel @Inject constructor(
         }
     }
 
-    fun addDiary(userId: String, title: String, content: String, mood: String, tags: List<String>, imageUri: Uri?) {
+    fun addDiaryWithMedia(
+        userId: String,
+        title: String,
+        content: String,
+        mood: String,
+        tags: List<String>,
+        mediaItems: List<Pair<Uri, Boolean>> // Thay vì một Uri đơn lẻ
+    ) {
         viewModelScope.launch {
             try {
-                val mediaUrls = if (imageUri != null) {
-                    listOf(repository.uploadImage(imageUri))
-                } else {
-                    emptyList()
+                val mediaUrls = mediaItems.map { (uri, isVideo) ->
+                    repository.uploadMedia(uri, isVideo)
                 }
+
                 val diary = DiaryEntry(
-                    userId = userId, 
-                    title = title, 
+                    userId = userId,
+                    title = title,
                     content = content,
                     mood = mood,
                     tags = tags,
