@@ -7,9 +7,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import com.example.nhatky.ui.screens.AddEditDiaryScreen
 import com.example.nhatky.ui.screens.DiaryListScreen
 import com.example.nhatky.ui.screens.LoginScreen
 import com.example.nhatky.ui.screens.RegisterScreen
@@ -68,7 +71,36 @@ fun AppNavigation() {
             )
         }
         composable("diary_list") {
-            DiaryListScreen(authViewModel, diaryViewModel)
+            DiaryListScreen(
+                authViewModel = authViewModel,
+                diaryViewModel = diaryViewModel,
+                onAddDiary = {
+                    navController.navigate("add_edit_diary")
+                },
+                onEditDiary = { diaryId ->
+                    navController.navigate("add_edit_diary?diaryId=$diaryId")
+                }
+            )
+        }
+        composable(
+            route = "add_edit_diary?diaryId={diaryId}",
+            arguments = listOf(
+                navArgument("diaryId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
+        ) { backStackEntry ->
+            val diaryId = backStackEntry.arguments?.getString("diaryId")
+            AddEditDiaryScreen(
+                diaryId = diaryId,
+                authViewModel = authViewModel,
+                diaryViewModel = diaryViewModel,
+                onBack = {
+                    navController.popBackStack()
+                }
+            )
         }
     }
 }
