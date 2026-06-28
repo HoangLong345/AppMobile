@@ -1,65 +1,42 @@
 package com.example.nhatky.data.repository
 
-import  android.net.Uri
+import com.example.nhatky.data.dao.DiaryDao
 import com.example.nhatky.data.model.DiaryEntry
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.Query
-import com.google.firebase.storage.FirebaseStorage
-import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.tasks.await
-import java.util.UUID
 
-class DiaryRepository {
-    private val firestore = FirebaseFirestore.getInstance()
-    private val storage = FirebaseStorage.getInstance()
-    private val diaryCollection = firestore.collection("diaries")
+class DiaryRepository(private val diaryDao: DiaryDao) {
 
-    fun getDiaries(userId: String, searchQuery: String = ""): Flow<List<DiaryEntry>> = callbackFlow {
-        val subscription = diaryCollection
-            .whereEqualTo("userId", userId)
-            .orderBy("timestamp", Query.Direction.DESCENDING)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    close(error)
-                    return@addSnapshotListener
-                }
-                if (snapshot != null) {
-                    val diaries = snapshot.toObjects(DiaryEntry::class.java)
-                    // Lọc theo search query (tạm thời lọc ở client cho linh hoạt)
-                    val filteredDiaries = if (searchQuery.isBlank()) {
-                        diaries
-                    } else {
-                        diaries.filter { 
-                            it.title.contains(searchQuery, ignoreCase = true) || 
-                            it.content.contains(searchQuery, ignoreCase = true) ||
-                            it.tags.any { tag -> tag.contains(searchQuery, ignoreCase = true) }
-                        }
-                    }
-                    trySend(filteredDiaries)
-                }
+    val allEntries: Flow<List<DiaryEntry>> = diaryDao.getAllEntries()
+
+    suspend fun insert(entry: DiaryEntry) {
+        diaryDao.insertEntry(entry)
+        // TODO: Sync with Firebase Firestore
+    }
+
+    suspend fun update(entry: DiaryEntry) {
+        diaryDao.updateEntry(entry)
+        // TODO: Sync with Firebase Firestore
+    }
+
+    suspend fun delete(entry: DiaryEntry) {
+        diaryDao.deleteEntry(entry)
+        // TODO: Sync with Firebase Firestore
+    }
+
+    suspend fun getEntryById(id: Long): DiaryEntry? {
+        return diaryDao.getEntryById(id)
+    }
+
+    suspend fun syncWithCloud() {
+        val unsynced = diaryDao.getUnsyncedEntries()
+        unsynced.forEach { entry ->
+            try {
+                // TODO: Upload to Firestore
+                // if successful:
+                // diaryDao.updateEntry(entry.copy(isSynced = true))
+            } catch (e: Exception) {
+                // Log error
             }
-        awaitClose { subscription.remove() }
-    }
-
-    suspend fun addDiary(diary: DiaryEntry) {
-        val docRef = diaryCollection.document()
-        val newDiary = diary.copy(id = docRef.id)
-        docRef.set(newDiary).await()
-    }
-
-    suspend fun deleteDiary(diaryId: String) {
-        diaryCollection.document(diaryId).delete().await()
-    }
-
-    suspend fun uploadMedia(uri: Uri, isVideo: Boolean): String {
-        val extension = if (isVideo) "mp4" else "jpg"
-        val folder = if (isVideo) "videos" else "images"
-        val fileName = "$folder/${UUID.randomUUID()}.$extension"
-
-        val ref = storage.reference.child(fileName)
-        ref.putFile(uri).await()
-        return ref.downloadUrl.await().toString()
+        }
     }
 }
