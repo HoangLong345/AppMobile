@@ -39,6 +39,14 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.PlayArrow
+import com.example.nhatky.ui.components.VideoPlayerDialog
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,6 +55,7 @@ fun DiaryListScreen(authViewModel: AuthViewModel, diaryViewModel: DiaryViewModel
     val diaries by diaryViewModel.diaries.collectAsState()
     val searchQuery by diaryViewModel.searchQuery.collectAsState()
     var showDialog by remember { mutableStateOf(false) }
+    var selectedVideoUrl by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(user) {
         user?.uid?.let { diaryViewModel.loadDiaries(it) }
@@ -99,20 +108,50 @@ fun DiaryListScreen(authViewModel: AuthViewModel, diaryViewModel: DiaryViewModel
                         Text(diary.content)
                         
                         diary.mediaUrls.forEach { url ->
-                            AsyncImage(
-                                model = ImageRequest.Builder(LocalContext.current)
-                                    .data(url)
-                                    .crossfade(true)
-                                    .size(Size.ORIGINAL) // Or a specific size if you want to cap it
-                                    .memoryCachePolicy(CachePolicy.ENABLED)
-                                    .diskCachePolicy(CachePolicy.ENABLED)
-                                    .build(),
-                                contentDescription = null,
+                            val isVideo = url.contains("videos/") || url.endsWith(".mp4") || url.contains(".mp4?")
+                            
+                            Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(200.dp)
                                     .padding(top = 8.dp)
-                            )
+                                    .clip(MaterialTheme.shapes.medium)
+                                    .clickable { if (isVideo) selectedVideoUrl = url }
+                            ) {
+                                AsyncImage(
+                                    model = ImageRequest.Builder(LocalContext.current)
+                                        .data(url)
+                                        .crossfade(true)
+                                        .size(Size.ORIGINAL)
+                                        .memoryCachePolicy(CachePolicy.ENABLED)
+                                        .diskCachePolicy(CachePolicy.ENABLED)
+                                        .build(),
+                                    contentDescription = null,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                                
+                                if (isVideo) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(Color.Black.copy(alpha = 0.3f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = Color.White.copy(alpha = 0.8f),
+                                            modifier = Modifier.size(48.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.PlayArrow,
+                                                contentDescription = "Play Video",
+                                                tint = Color.Black,
+                                                modifier = Modifier.padding(8.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -126,6 +165,13 @@ fun DiaryListScreen(authViewModel: AuthViewModel, diaryViewModel: DiaryViewModel
                     user?.uid?.let { diaryViewModel.addDiaryWithMedia(it, title, content, mood, tags, mediaItems) }
                     showDialog = false
                 }
+            )
+        }
+
+        selectedVideoUrl?.let { url ->
+            VideoPlayerDialog(
+                videoUrl = url,
+                onDismiss = { selectedVideoUrl = null }
             )
         }
     }
