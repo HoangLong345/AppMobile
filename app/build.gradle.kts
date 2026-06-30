@@ -83,6 +83,11 @@ dependencies {
     implementation(libs.google.play.services.auth)
     implementation(libs.coil.compose)
 
+    // Media3
+    implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.ui)
+    implementation(libs.androidx.media3.common)
+
     // Hilt
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
