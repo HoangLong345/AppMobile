@@ -51,11 +51,10 @@ fun AppNavigation() {
                     navController.navigate("diary_list") {
                         popUpTo("login") { inclusive = true }
                     }
-                },
-                onNavigateToRegister = {
-                    navController.navigate("register")
                 }
-            )
+            ) {
+                navController.navigate("register")
+            }
         }
         composable("register") {
             RegisterScreen(
@@ -65,10 +64,9 @@ fun AppNavigation() {
                         popUpTo("login") { inclusive = true }
                     }
                 },
-                onBack = {
-                    navController.popBackStack()
-                }
-            )
+            ) {
+                navController.popBackStack()
+            }
         }
         composable("diary_list") {
             DiaryListScreen(

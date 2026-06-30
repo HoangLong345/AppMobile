@@ -16,7 +16,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
@@ -92,7 +91,7 @@ fun DiaryListScreen(
                             onClick = { authViewModel.logout() },
                             modifier = Modifier
                                 .background(MaterialTheme.colorScheme.surface, CircleShape)
-                                .size(48.dp)
+                                .size(48.dp),
                         ) {
                             Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = "Logout")
                         }
@@ -100,8 +99,9 @@ fun DiaryListScreen(
                     
                     SearchBar(
                         query = searchQuery,
-                        onQueryChange = { user?.uid?.let { uid -> diaryViewModel.onSearchQueryChange(it, uid) } }
-                    )
+                    ) { query ->
+                        user?.uid?.let { uid -> diaryViewModel.onSearchQueryChange(query, uid) }
+                    }
                 }
             }
         },
@@ -110,7 +110,7 @@ fun DiaryListScreen(
                 onClick = onAddDiary,
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
-                shape = RoundedCornerShape(24.dp)
+                shape = RoundedCornerShape(24.dp),
             ) {
                 Icon(Icons.Default.Add, contentDescription = "Add Diary", modifier = Modifier.size(36.dp))
             }
@@ -140,7 +140,7 @@ fun DiaryListScreen(
                             ) {
                                 itemsIndexed(state.diaries, key = { _, diary -> diary.id }) { index, diary ->
                                     // Manual staggered entrance animation using AnimatedVisibility
-                                    var visible by remember { mutableStateOf(false) }
+                                    var visible by remember { mutableStateOf(value = false) }
                                     LaunchedEffect(Unit) {
                                         delay(index * 50L)
                                         visible = true
@@ -149,13 +149,14 @@ fun DiaryListScreen(
                                     AnimatedVisibility(
                                         visible = visible,
                                         enter = fadeIn(tween(500)) + slideInVertically(tween(500)) { it / 2 },
-                                        exit = fadeOut(tween(500))
+                                        exit = fadeOut(tween(500)),
                                     ) {
                                         DiaryCard(
                                             diary = diary,
-                                            onClick = { onEditDiary(diary.id) },
-                                            onDelete = { diaryViewModel.deleteDiary(diary.id) }
-                                        )
+                                            onClick = { onEditDiary(diary.id) }
+                                        ) {
+                                            diaryViewModel.deleteDiary(diary.id)
+                                        }
                                     }
                                 }
                             }
@@ -217,7 +218,7 @@ fun DiaryCard(diary: DiaryEntry, modifier: Modifier = Modifier, onClick: () -> U
         else -> "📝"
     }
 
-    var isPressed by remember { mutableStateOf(false) }
+    var isPressed by remember { mutableStateOf(value = false) }
     val scale by animateFloatAsState(
         targetValue = if (isPressed) 0.98f else 1f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
@@ -317,7 +318,7 @@ fun DiaryCard(diary: DiaryEntry, modifier: Modifier = Modifier, onClick: () -> U
                                     text = "#$tag",
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                                     style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
                                 )
                             }
                         }

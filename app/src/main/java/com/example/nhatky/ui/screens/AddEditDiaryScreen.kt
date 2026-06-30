@@ -38,7 +38,7 @@ fun AddEditDiaryScreen(
     diaryId: String?,
     authViewModel: AuthViewModel,
     diaryViewModel: DiaryViewModel,
-    onBack: () -> Unit
+    onBack: () -> Unit,
 ) {
     val user by authViewModel.currentUser.collectAsState()
     var title by remember { mutableStateOf("") }
@@ -47,12 +47,12 @@ fun AddEditDiaryScreen(
     var tagsString by remember { mutableStateOf("") }
     var selectedImageUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var existingMediaUrls by remember { mutableStateOf<List<String>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(value = false) }
 
     val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetMultipleContents()
+        contract = ActivityResultContracts.GetMultipleContents(),
     ) { uris ->
-        selectedImageUris = selectedImageUris + uris
+        selectedImageUris += uris
     }
 
     LaunchedEffect(diaryId) {
@@ -76,13 +76,13 @@ fun AddEditDiaryScreen(
                 title = { 
                     Text(
                         if (diaryId == null) "Viết Nhật Ký" else "Chỉnh Sửa",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                     ) 
                 },
                 navigationIcon = {
                     IconButton(
                         onClick = onBack,
-                        modifier = Modifier.padding(start = 8.dp).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), CircleShape)
+                        modifier = Modifier.padding(start = 8.dp).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), CircleShape),
                     ) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
@@ -91,14 +91,14 @@ fun AddEditDiaryScreen(
                     if (isLoading) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(24.dp).padding(end = 16.dp),
-                            strokeWidth = 2.dp
+                            strokeWidth = 2.dp,
                         )
                     } else {
                         TextButton(
                             onClick = {
                                 user?.uid?.let { uid ->
                                     isLoading = true
-                                    val tags = tagsString.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                                    val tags = tagsString.split(",").asSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
                                     diaryViewModel.addOrUpdateDiary(
                                         diaryId = diaryId,
                                         userId = uid,
@@ -140,9 +140,10 @@ fun AddEditDiaryScreen(
             )
             
             MoodSelector(
-                selectedMood = mood,
-                onMoodSelected = { mood = it }
-            )
+                selectedMood = mood
+            ) {
+                mood = it
+            }
 
             Spacer(modifier = Modifier.height(24.dp))
 
@@ -230,10 +231,14 @@ fun AddEditDiaryScreen(
                         contentPadding = PaddingValues(vertical = 8.dp)
                     ) {
                         items(existingMediaUrls) { url ->
-                            MediaThumbnail(model = url, onRemove = { existingMediaUrls = existingMediaUrls - url })
+                            MediaThumbnail(model = url) {
+                                existingMediaUrls -= url
+                            }
                         }
                         items(selectedImageUris) { uri ->
-                            MediaThumbnail(model = uri, onRemove = { selectedImageUris = selectedImageUris - uri })
+                            MediaThumbnail(model = uri) {
+                                selectedImageUris -= uri
+                            }
                         }
                     }
                 }
@@ -292,7 +297,7 @@ fun MoodSelector(selectedMood: String, onMoodSelected: (String) -> Unit) {
 
 @Composable
 fun MediaThumbnail(model: Any, onRemove: () -> Unit) {
-    var isRemoving by remember { mutableStateOf(false) }
+    var isRemoving by remember { mutableStateOf(value = false) }
     
     AnimatedVisibility(
         visible = !isRemoving,
@@ -323,6 +328,13 @@ fun MediaThumbnail(model: Any, onRemove: () -> Unit) {
             ) {
                 Icon(Icons.Default.Close, contentDescription = "Remove", tint = Color.White, modifier = Modifier.padding(4.dp))
             }
+        }
+    }
+    
+    // Explicitly use isRemoving to avoid warning, though AnimatedVisibility handles it
+    if (isRemoving) {
+        SideEffect {
+            // isRemoving logic
         }
     }
 }

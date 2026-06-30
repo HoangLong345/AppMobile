@@ -1,6 +1,6 @@
 package com.example.nhatky.data.repository
 
-import android.net.Uri
+import  android.net.Uri
 import com.example.nhatky.data.model.DiaryEntry
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
@@ -62,8 +62,11 @@ class DiaryRepository {
         diaryCollection.document(diaryId).delete().await()
     }
 
-    suspend fun uploadImage(uri: Uri): String {
-        val fileName = "images/${UUID.randomUUID()}.jpg"
+    suspend fun uploadMedia(uri: Uri, isVideo: Boolean): String {
+        val extension = if (isVideo) "mp4" else "jpg"
+        val folder = if (isVideo) "videos" else "images"
+        val fileName = "$folder/${UUID.randomUUID()}.$extension"
+
         val ref = storage.reference.child(fileName)
         ref.putFile(uri).await()
         return ref.downloadUrl.await().toString()

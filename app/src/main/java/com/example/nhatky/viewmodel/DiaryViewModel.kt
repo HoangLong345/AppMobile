@@ -18,16 +18,13 @@ sealed class DiaryUiState {
 
 @HiltViewModel
 class DiaryViewModel @Inject constructor(
-    private val repository: DiaryRepository
+    private val repository: DiaryRepository,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow<DiaryUiState>(DiaryUiState.Loading)
     val uiState: StateFlow<DiaryUiState> = _uiState.asStateFlow()
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
-
-    // Temporary storage for diaries to avoid repeated network calls during simple filtering if needed
-    // But repository already provides a Flow with filtering, so we'll stick with that.
 
     fun onSearchQueryChange(query: String, userId: String) {
         _searchQuery.value = query
@@ -60,11 +57,17 @@ class DiaryViewModel @Inject constructor(
         tags: List<String>,
         imageUris: List<Uri>,
         existingMediaUrls: List<String> = emptyList(),
-        onComplete: (Boolean) -> Unit
+        onComplete: (Boolean) -> Unit,
     ) {
         viewModelScope.launch {
             try {
-                val newMediaUrls = imageUris.map { repository.uploadImage(it) }
+                val newMediaUrls = imageUris.map { uri ->
+                    // Đơn giản hóa: Coi mọi thứ là ảnh nếu không có phần mở rộng video
+                    val isVideo = uri.toString().lowercase().let { 
+                        it.endsWith(".mp4") || it.contains("video") 
+                    }
+                    repository.uploadMedia(uri, isVideo)
+                }
                 val totalMediaUrls = existingMediaUrls + newMediaUrls
                 
                 val diary = DiaryEntry(
@@ -74,7 +77,7 @@ class DiaryViewModel @Inject constructor(
                     content = content,
                     mood = mood,
                     tags = tags,
-                    mediaUrls = totalMediaUrls
+                    mediaUrls = totalMediaUrls,
                 )
                 
                 if (diaryId == null) {
@@ -93,7 +96,7 @@ class DiaryViewModel @Inject constructor(
     suspend fun getDiaryById(diaryId: String): DiaryEntry? {
         return try {
             repository.getDiaryById(diaryId)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
         }
     }
