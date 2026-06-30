@@ -1,61 +1,50 @@
 package com.example.nhatky.ui.screens
 
-import android.content.Context
-import android.graphics.Bitmap
-import android.net.Uri
-import android.provider.MediaStore
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.activity.result.launch
-import androidx.compose.foundation.Image
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.ExitToApp
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
-import coil.request.CachePolicy
-import coil.size.Size
-import com.example.nhatky.viewmodel.AuthViewModel
-import com.example.nhatky.viewmodel.DiaryViewModel
-import com.example.nhatky.data.model.DiaryEntry
-import java.io.ByteArrayOutputStream
-import android.content.ContentResolver
-import android.webkit.MimeTypeMap
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.PlayArrow
-import com.example.nhatky.ui.components.VideoPlayerDialog
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.graphics.Color
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.background
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import com.example.nhatky.data.model.DiaryEntry
+import com.example.nhatky.viewmodel.AuthViewModel
+import com.example.nhatky.viewmodel.DiaryUiState
+import com.example.nhatky.viewmodel.DiaryViewModel
+import kotlinx.coroutines.delay
+import java.text.SimpleDateFormat
+import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DiaryListScreen(authViewModel: AuthViewModel, diaryViewModel: DiaryViewModel) {
+fun DiaryListScreen(
+    authViewModel: AuthViewModel,
+    diaryViewModel: DiaryViewModel,
+    onAddDiary: () -> Unit,
+    onEditDiary: (String) -> Unit,
+) {
     val user by authViewModel.currentUser.collectAsState()
-    val diaries by diaryViewModel.diaries.collectAsState()
+    val uiState by diaryViewModel.uiState.collectAsState()
     val searchQuery by diaryViewModel.searchQuery.collectAsState()
-    var showDialog by remember { mutableStateOf(false) }
-    var selectedVideoUrl by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(user) {
         user?.uid?.let { diaryViewModel.loadDiaries(it) }
@@ -63,276 +52,356 @@ fun DiaryListScreen(authViewModel: AuthViewModel, diaryViewModel: DiaryViewModel
 
     Scaffold(
         topBar = {
-            Column {
-                TopAppBar(
-                    title = { Text("Nhật Ký của tôi") },
-                    actions = {
-                        IconButton(onClick = { authViewModel.logout() }) {
-                            Icon(Icons.Default.ExitToApp, contentDescription = "Logout")
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        brush = Brush.verticalGradient(
+                            colors = listOf(
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f),
+                                MaterialTheme.colorScheme.surface
+                            )
+                        )
+                    )
+                    .padding(top = 16.dp)
+            ) {
+                Column {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text(
+                                text = "Chào bạn,",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "Hôm nay thế nào?",
+                                style = MaterialTheme.typography.headlineMedium.copy(
+                                    fontWeight = FontWeight.ExtraBold,
+                                    letterSpacing = 0.5.sp
+                                )
+                            )
+                        }
+                        IconButton(
+                            onClick = { authViewModel.logout() },
+                            modifier = Modifier
+                                .background(MaterialTheme.colorScheme.surface, CircleShape)
+                                .size(48.dp),
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = "Logout")
                         }
                     }
-                )
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { user?.uid?.let { uid -> diaryViewModel.onSearchQueryChange(it, uid) } },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                    placeholder = { Text("Tìm kiếm theo tiêu đề, nội dung, thẻ...") },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                    singleLine = true
-                )
+                    
+                    SearchBar(
+                        query = searchQuery,
+                    ) { query ->
+                        user?.uid?.let { uid -> diaryViewModel.onSearchQueryChange(query, uid) }
+                    }
+                }
             }
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { showDialog = true }) {
-                Icon(Icons.Default.Add, contentDescription = "Add Diary")
+            LargeFloatingActionButton(
+                onClick = onAddDiary,
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                shape = RoundedCornerShape(24.dp),
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Add Diary", modifier = Modifier.size(36.dp))
             }
         }
     ) { padding ->
-        LazyColumn(modifier = Modifier.padding(padding)) {
-            items(diaries) { diary ->
-                Card(
-                    modifier = Modifier.fillMaxWidth().padding(8.dp)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(diary.title, style = MaterialTheme.typography.titleLarge)
-                            IconButton(onClick = { diaryViewModel.deleteDiary(diary.id) }) {
-                                Icon(Icons.Default.Delete, contentDescription = "Delete")
-                            }
+        Box(modifier = Modifier.padding(padding).fillMaxSize()) {
+            AnimatedContent(
+                targetState = uiState,
+                transitionSpec = {
+                    fadeIn(animationSpec = tween(500)) togetherWith fadeOut(animationSpec = tween(500))
+                },
+                label = "UIStateTransition"
+            ) { state ->
+                when (state) {
+                    is DiaryUiState.Loading -> {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator()
                         }
-                        Text("Cảm xúc: ${diary.mood}", style = MaterialTheme.typography.bodySmall)
-                        if (diary.tags.isNotEmpty()) {
-                            Text("Thẻ: ${diary.tags.joinToString(", ")}", style = MaterialTheme.typography.bodySmall)
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(diary.content)
-                        
-                        diary.mediaUrls.forEach { url ->
-                            val isVideo = url.contains("videos/") || url.endsWith(".mp4") || url.contains(".mp4?")
-                            
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(200.dp)
-                                    .padding(top = 8.dp)
-                                    .clip(MaterialTheme.shapes.medium)
-                                    .clickable { if (isVideo) selectedVideoUrl = url }
+                    }
+                    is DiaryUiState.Success -> {
+                        if (state.diaries.isEmpty()) {
+                            EmptyStateView()
+                        } else {
+                            LazyColumn(
+                                contentPadding = PaddingValues(bottom = 100.dp, start = 16.dp, end = 16.dp, top = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(20.dp)
                             ) {
-                                AsyncImage(
-                                    model = ImageRequest.Builder(LocalContext.current)
-                                        .data(url)
-                                        .crossfade(true)
-                                        .size(Size.ORIGINAL)
-                                        .memoryCachePolicy(CachePolicy.ENABLED)
-                                        .diskCachePolicy(CachePolicy.ENABLED)
-                                        .build(),
-                                    contentDescription = null,
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                                
-                                if (isVideo) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .background(Color.Black.copy(alpha = 0.3f)),
-                                        contentAlignment = Alignment.Center
+                                itemsIndexed(state.diaries, key = { _, diary -> diary.id }) { index, diary ->
+                                    // Manual staggered entrance animation using AnimatedVisibility
+                                    var visible by remember { mutableStateOf(value = false) }
+                                    LaunchedEffect(Unit) {
+                                        delay(index * 50L)
+                                        visible = true
+                                    }
+                                    
+                                    AnimatedVisibility(
+                                        visible = visible,
+                                        enter = fadeIn(tween(500)) + slideInVertically(tween(500)) { it / 2 },
+                                        exit = fadeOut(tween(500)),
                                     ) {
-                                        Surface(
-                                            shape = CircleShape,
-                                            color = Color.White.copy(alpha = 0.8f),
-                                            modifier = Modifier.size(48.dp)
+                                        DiaryCard(
+                                            diary = diary,
+                                            onClick = { onEditDiary(diary.id) }
                                         ) {
-                                            Icon(
-                                                imageVector = Icons.Default.PlayArrow,
-                                                contentDescription = "Play Video",
-                                                tint = Color.Black,
-                                                modifier = Modifier.padding(8.dp)
-                                            )
+                                            diaryViewModel.deleteDiary(diary.id)
                                         }
                                     }
                                 }
                             }
                         }
                     }
+                    is DiaryUiState.Error -> {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(
+                                text = "Lỗi: ${state.message}",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                        }
+                    }
                 }
             }
-        }
-
-        if (showDialog) {
-            AddDiaryDialog(
-                onDismiss = { showDialog = false },
-                onAdd = { title, content, mood, tags, mediaItems ->
-                    user?.uid?.let { diaryViewModel.addDiaryWithMedia(it, title, content, mood, tags, mediaItems) }
-                    showDialog = false
-                }
-            )
-        }
-
-        selectedVideoUrl?.let { url ->
-            VideoPlayerDialog(
-                videoUrl = url,
-                onDismiss = { selectedVideoUrl = null }
-            )
         }
     }
 }
 
 @Composable
-fun AddDiaryDialog(onDismiss: () -> Unit, onAdd: (String, String, String, List<String>, List<Pair<Uri, Boolean>>) -> Unit) {
-    var title by remember { mutableStateOf("") }
-    var content by remember { mutableStateOf("") }
-    var mood by remember { mutableStateOf("Bình thường") }
-    var tagsString by remember { mutableStateOf("") }
+fun SearchBar(query: String, onQueryChange: (String) -> Unit) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(20.dp),
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        tonalElevation = 8.dp
+    ) {
+        TextField(
+            value = query,
+            onValueChange = onQueryChange,
+            placeholder = { Text("Tìm kiếm kỷ niệm...", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)) },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+            modifier = Modifier.fillMaxWidth(),
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = Color.Transparent,
+                unfocusedContainerColor = Color.Transparent,
+                disabledContainerColor = Color.Transparent,
+                focusedIndicatorColor = Color.Transparent,
+                unfocusedIndicatorColor = Color.Transparent,
+            ),
+            singleLine = true
+        )
+    }
+}
 
-    // Danh sách lưu trữ các tệp media đã chọn: Pair(Uri, IsVideo)
-    val chosenMediaList = remember { mutableStateListOf<Pair<Uri, Boolean>>() }
-    val context = LocalContext.current
-
-    // Hàm phụ kiểm tra xem một Uri có phải là Video hay không
-    fun isVideoUri(uri: Uri): Boolean {
-        return context.contentResolver.getType(uri)?.startsWith("video") == true
+@Composable
+fun DiaryCard(diary: DiaryEntry, modifier: Modifier = Modifier, onClick: () -> Unit, onDelete: () -> Unit) {
+    val dateFormat = remember { SimpleDateFormat("dd MMMM, yyyy", Locale("vi", "VN")) }
+    val timeString = diary.timestamp?.let { dateFormat.format(it) } ?: "Đang chờ..."
+    
+    val moodEmoji = when(diary.mood) {
+        "Vui" -> "😊"
+        "Bình thường" -> "😐"
+        "Buồn" -> "😔"
+        "Tức giận" -> "😠"
+        else -> "📝"
     }
 
-    // 1. Launcher chụp ảnh từ Camera
-    val cameraLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.TakePicturePreview()
-    ) { bitmap ->
-        if (bitmap != null) {
-            val uri = getImageUriFromBitmap(context, bitmap) // Hàm helper chuyển đổi bitmap có sẵn của bạn
-            chosenMediaList.add(Pair(uri, false))
-        }
-    }
+    var isPressed by remember { mutableStateOf(value = false) }
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.98f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+        label = "CardScale"
+    )
 
-    // 2. Launcher chọn ảnh bằng PhotoPicker (Hỗ trợ chọn nhiều hoặc 1 ảnh)
-    val photoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 5)
-    ) { uris ->
-        uris.forEach { uri ->
-            chosenMediaList.add(Pair(uri, isVideoUri(uri)))
-        }
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Viết nhật ký mới") },
-        text = {
-            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Tiêu đề") }, modifier = Modifier.fillMaxWidth())
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(value = content, onValueChange = { content = it }, label = { Text("Nội dung") }, modifier = Modifier.fillMaxWidth())
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Text("Cảm xúc hôm nay:")
-                Row {
-                    listOf("Vui", "Bình thường", "Buồn").forEach { m ->
-                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                            RadioButton(selected = mood == m, onClick = { mood = m })
-                            Text(m)
+    ElevatedCard(
+        modifier = modifier
+            .fillMaxWidth()
+            .scale(scale)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(32.dp),
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 4.dp, pressedElevation = 8.dp)
+    ) {
+        Column {
+            if (diary.mediaUrls.isNotEmpty()) {
+                Box {
+                    AsyncImage(
+                        model = diary.mediaUrls.first(),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp)
+                            .clip(RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)),
+                        contentScale = ContentScale.Crop
+                    )
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(Color.Transparent, Color.Black.copy(alpha = 0.3f))
+                                )
+                            )
+                    )
+                }
+            }
+            
+            Column(modifier = Modifier.padding(20.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = timeString.uppercase(),
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontWeight = FontWeight.ExtraBold,
+                                letterSpacing = 1.sp
+                            ),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = diary.title,
+                            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier.size(50.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(text = moodEmoji, fontSize = 28.sp)
                         }
                     }
                 }
-
-                OutlinedTextField(
-                    value = tagsString,
-                    onValueChange = { tagsString = it },
-                    label = { Text("Thẻ (phân cách bằng dấu phẩy)") },
-                    placeholder = { Text("gia đình, học tập...") },
-                    modifier = Modifier.fillMaxWidth()
+                
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                Text(
+                    text = diary.content,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                    lineHeight = 24.sp
                 )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Các nút điều khiển chọn phương tiện truyền thông
-                Text("Đính kèm phương tiện:", style = MaterialTheme.typography.titleSmall)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Button(onClick = { cameraLauncher.launch() }, modifier = Modifier.weight(1f)) {
-                        Text("Chụp ảnh", style = MaterialTheme.typography.bodySmall)
-                    }
-                    Button(
-                        onClick = {
-                            photoPickerLauncher.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
-                            )
-                        },
-                        modifier = Modifier.weight(1f)
+                
+                if (diary.tags.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Chọn tệp", style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Hiển thị danh sách ảnh/video preview đã chọn dạng lưới nhỏ gọn
-                if (chosenMediaList.isNotEmpty()) {
-                    Text("Đã chọn (${chosenMediaList.size}):", style = MaterialTheme.typography.bodySmall)
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    Box(modifier = Modifier.height(120.dp).fillMaxWidth()) {
-                        LazyVerticalGrid(
-                            columns = GridCells.Fixed(3),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            items(chosenMediaList) { (uri, isVideo) ->
-                                Box(modifier = Modifier.size(100.dp)) {
-                                    if (isVideo) {
-                                        // Preview đơn giản cho Video (Hiển thị icon hoặc text video)
-                                        Surface(
-                                            modifier = Modifier.fillMaxSize(),
-                                            color = MaterialTheme.colorScheme.surfaceVariant
-                                        ) {
-                                            Box(contentAlignment = androidx.compose.ui.Alignment.Center) {
-                                                Text("📹 Video", style = MaterialTheme.typography.labelSmall)
-                                            }
-                                        }
-                                    } else {
-                                        // Preview cho Ảnh bằng AsyncImage của Coil
-                                        AsyncImage(
-                                            model = ImageRequest.Builder(LocalContext.current)
-                                                .data(uri)
-                                                .crossfade(true)
-                                                .size(200, 200) // Resize for small preview
-                                                .memoryCachePolicy(CachePolicy.ENABLED)
-                                                .build(),
-                                            contentDescription = null,
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-                                    }
-
-                                    // Nút xóa nhanh phương tiện khỏi danh sách chọn
-                                    FilledIconButton(
-                                        onClick = { chosenMediaList.remove(Pair(uri, isVideo)) },
-                                        modifier = Modifier.size(24.dp).align(androidx.compose.ui.Alignment.TopEnd),
-                                        colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.error)
-                                    ) {
-                                        Icon(Icons.Default.Close, contentDescription = "Xóa", modifier = Modifier.size(14.dp))
-                                    }
-                                }
+                        diary.tags.take(3).forEach { tag ->
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
+                            ) {
+                                Text(
+                                    text = "#$tag",
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                )
                             }
+                        }
+                        Spacer(modifier = Modifier.weight(1f))
+                        IconButton(
+                            onClick = onDelete,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Delete, 
+                                contentDescription = "Delete", 
+                                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.6f)
+                            )
+                        }
+                    }
+                } else {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        IconButton(
+                            onClick = onDelete,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Delete, 
+                                contentDescription = "Delete", 
+                                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.6f)
+                            )
                         }
                     }
                 }
             }
-        },
-        confirmButton = {
-            Button(onClick = {
-                val tags = tagsString.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-                onAdd(title, content, mood, tags, chosenMediaList.toList())
-            }) { Text("Thêm") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Hủy") }
         }
-    )
+    }
 }
 
-// Helper function to convert Bitmap to Uri
-fun getImageUriFromBitmap(context: Context, bitmap: Bitmap): Uri {
-    val bytes = ByteArrayOutputStream()
-    bitmap.compress(Bitmap.CompressFormat.JPEG, 100, bytes)
-    val path = MediaStore.Images.Media.insertImage(context.contentResolver, bitmap, "DiaryImage_${System.currentTimeMillis()}", null)
-    return Uri.parse(path)
+@Composable
+fun EmptyStateView() {
+    val infiniteTransition = rememberInfiniteTransition(label = "EmptyStatePulse")
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "PulseAnimation"
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(40.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Surface(
+            modifier = Modifier
+                .size(160.dp)
+                .scale(pulseScale),
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Star,
+                contentDescription = null,
+                modifier = Modifier
+                    .padding(40.dp)
+                    .fillMaxSize(),
+                tint = MaterialTheme.colorScheme.primary
+            )
+        }
+        Spacer(modifier = Modifier.height(32.dp))
+        Text(
+            text = "Bắt đầu cuộc hành trình",
+            style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.ExtraBold),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        Text(
+            text = "Mỗi ngày là một món quà. Hãy ghi lại chúng để trân trọng mãi mãi.",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            lineHeight = 26.sp
+        )
+    }
 }
