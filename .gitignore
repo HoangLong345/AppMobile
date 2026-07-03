@@ -1,7 +1,7 @@
 # Build artifacts
 *.iml
 .gradle
-/local.properties
+local.properties
 /.idea/caches
 /.idea/libraries
 /.idea/modules.xml
@@ -13,7 +13,6 @@
 /captures
 .externalNativeBuild
 .cxx
-local.properties
 
 # Google Services (Firebase) - HIGHLY RECOMMENDED TO EXCLUDE
 # If your repo is public, hackers can use your API keys.
