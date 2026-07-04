@@ -95,7 +95,7 @@ class DiaryViewModel @Inject constructor(
 
     suspend fun getDiaryById(diaryId: String): DiaryEntry? {
         return try {
-            repository.getDiaryById(diaryId)
+            repository.getEntryById(diaryId)
         } catch (_: Exception) {
             null
         }

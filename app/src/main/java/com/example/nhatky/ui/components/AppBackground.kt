@@ -7,13 +7,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
-import com.example.nhatky.ui.theme.BackgroundGradientDark
-import com.example.nhatky.ui.theme.BackgroundGradientLight
+import androidx.compose.ui.graphics.Color
+import com.example.nhatky.ui.theme.PaperIvory
 
 @Composable
 fun AppBackground(content: @Composable () -> Unit) {
     val isDark = isSystemInDarkTheme()
-    val gradientColors = if (isDark) BackgroundGradientDark else BackgroundGradientLight
+    val gradientColors = if (isDark) {
+        listOf(Color(0xFF1B1B18), Color(0xFF2C2C28))
+    } else {
+        listOf(Color(0xFFFFF9F0), PaperIvory)
+    }
     
     Box(
         modifier = Modifier
