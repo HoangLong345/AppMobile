@@ -5,13 +5,14 @@ import androidx.room.PrimaryKey
 
 @Entity(tableName = "diary_entries")
 data class DiaryEntry(
-    @PrimaryKey(autoGenerate = true)
-    val id: Long = 0,
-    val title: String,
-    val content: String,
-    val timestamp: Long,
-    val images: List<String>,
-    val videoUrl: String?,
-    val mood: String,
+    @PrimaryKey
+    val id: String = "",
+    val userId: String = "",
+    val title: String = "",
+    val content: String = "",
+    val timestamp: Long = System.currentTimeMillis(),
+    val mood: String = "Bình thường",
+    val tags: List<String> = emptyList(),
+    val mediaUrls: List<String> = emptyList(),
     val isSynced: Boolean = false
 )

@@ -1,60 +1,74 @@
 package com.example.nhatky.data.repository
 
+import android.net.Uri
 import com.example.nhatky.data.dao.DiaryDao
 import com.example.nhatky.data.model.DiaryEntry
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.tasks.await
+import java.util.UUID
+import javax.inject.Inject
+import javax.inject.Singleton
 
-class DiaryRepository(private val diaryDao: DiaryDao) {
+@Singleton
+class DiaryRepository @Inject constructor(
+    private val diaryDao: DiaryDao,
+    private val firestore: FirebaseFirestore,
+    private val storage: FirebaseStorage
+) {
+    private val diaryCollection = firestore.collection("diaries")
 
-    val allEntries: Flow<List<DiaryEntry>> = diaryDao.getAllEntries()
-
-    suspend fun insert(entry: DiaryEntry) {
-        diaryDao.insertEntry(entry)
-        // TODO: Sync with Firebase Firestore
+    fun getDiaries(userId: String, query: String = ""): Flow<List<DiaryEntry>> {
+        return if (query.isEmpty()) {
+            diaryDao.getAllEntries(userId)
+        } else {
+            diaryDao.searchEntries(userId, query)
+        }
     }
 
-    suspend fun update(entry: DiaryEntry) {
-        diaryDao.updateEntry(entry)
-        // TODO: Sync with Firebase Firestore
-    }
-
-    suspend fun delete(entry: DiaryEntry) {
-        diaryDao.deleteEntry(entry)
-        // TODO: Sync with Firebase Firestore
-    }
-
-    suspend fun getEntryById(id: Long): DiaryEntry? {
+    suspend fun getEntryById(id: String): DiaryEntry? {
         return diaryDao.getEntryById(id)
     }
 
-    suspend fun syncWithCloud() {
-        val unsynced = diaryDao.getUnsyncedEntries()
-        unsynced.forEach { entry ->
-            try {
-                // TODO: Upload to Firestore
-                // if successful:
-                // diaryDao.updateEntry(entry.copy(isSynced = true))
-            } catch (e: Exception) {
-                // Log error
-            }
-        }
-    suspend fun getDiaryById(diaryId: String): DiaryEntry? {
-        val snapshot = diaryCollection.document(diaryId).get().await()
-        return snapshot.toObject(DiaryEntry::class.java)
-    }
-
     suspend fun addDiary(diary: DiaryEntry) {
-        val docRef = diaryCollection.document()
-        val newDiary = diary.copy(id = docRef.id)
-        docRef.set(newDiary).await()
+        val id = if (diary.id.isEmpty()) UUID.randomUUID().toString() else diary.id
+        val newDiary = diary.copy(id = id)
+        
+        // Save locally first
+        diaryDao.insertEntry(newDiary)
+        
+        // Try to sync with Firestore
+        try {
+            diaryCollection.document(id).set(newDiary.copy(isSynced = true)).await()
+            diaryDao.updateEntry(newDiary.copy(isSynced = true))
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     suspend fun updateDiary(diary: DiaryEntry) {
-        diaryCollection.document(diary.id).set(diary).await()
+        diaryDao.updateEntry(diary.copy(isSynced = false))
+        
+        try {
+            diaryCollection.document(diary.id).set(diary.copy(isSynced = true)).await()
+            diaryDao.updateEntry(diary.copy(isSynced = true))
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     suspend fun deleteDiary(diaryId: String) {
-        diaryCollection.document(diaryId).delete().await()
+        val entry = diaryDao.getEntryById(diaryId)
+        if (entry != null) {
+            diaryDao.deleteEntry(entry)
+        }
+        
+        try {
+            diaryCollection.document(diaryId).delete().await()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     suspend fun uploadMedia(uri: Uri, isVideo: Boolean): String {
@@ -65,5 +79,17 @@ class DiaryRepository(private val diaryDao: DiaryDao) {
         val ref = storage.reference.child(fileName)
         ref.putFile(uri).await()
         return ref.downloadUrl.await().toString()
+    }
+
+    suspend fun syncWithCloud() {
+        val unsynced = diaryDao.getUnsyncedEntries()
+        unsynced.forEach { entry ->
+            try {
+                diaryCollection.document(entry.id).set(entry.copy(isSynced = true)).await()
+                diaryDao.updateEntry(entry.copy(isSynced = true))
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
 }

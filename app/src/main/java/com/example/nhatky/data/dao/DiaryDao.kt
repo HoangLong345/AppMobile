@@ -6,14 +6,17 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface DiaryDao {
-    @Query("SELECT * FROM diary_entries ORDER BY timestamp DESC")
-    fun getAllEntries(): Flow<List<DiaryEntry>>
+    @Query("SELECT * FROM diary_entries WHERE userId = :userId ORDER BY timestamp DESC")
+    fun getAllEntries(userId: String): Flow<List<DiaryEntry>>
+
+    @Query("SELECT * FROM diary_entries WHERE userId = :userId AND (title LIKE '%' || :query || '%' OR content LIKE '%' || :query || '%') ORDER BY timestamp DESC")
+    fun searchEntries(userId: String, query: String): Flow<List<DiaryEntry>>
 
     @Query("SELECT * FROM diary_entries WHERE id = :id")
-    suspend fun getEntryById(id: Long): DiaryEntry?
+    suspend fun getEntryById(id: String): DiaryEntry?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertEntry(entry: DiaryEntry): Long
+    suspend fun insertEntry(entry: DiaryEntry)
 
     @Update
     suspend fun updateEntry(entry: DiaryEntry)
