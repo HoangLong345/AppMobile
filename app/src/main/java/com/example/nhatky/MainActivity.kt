@@ -1,5 +1,6 @@
 package com.example.nhatky
 
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -14,8 +15,11 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.nhatky.ui.screens.AddEditDiaryScreen
+import com.example.nhatky.ui.screens.CameraScreen
 import com.example.nhatky.ui.screens.DiaryListScreen
 import com.example.nhatky.ui.screens.LoginScreen
+import com.example.nhatky.ui.screens.NoteWallScreen
+import com.example.nhatky.ui.screens.PhotoEditScreen
 import com.example.nhatky.ui.screens.RegisterScreen
 import com.example.nhatky.ui.theme.Theme
 import com.example.nhatky.viewmodel.AuthViewModel
@@ -80,9 +84,30 @@ fun AppNavigation() {
                 onAddDiary = {
                     navController.navigate("add_diary")
                 },
-                onEditDiary = { diaryId ->
-                    navController.navigate("edit_diary/$diaryId")
+                onOpenWall = { dateKey ->
+                    navController.navigate("note_wall/$dateKey")
+                },
+                onTakePhoto = {
+                    navController.navigate("camera_screen")
+                },
+                onPickPhoto = { encodedUri ->
+                    navController.navigate("photo_edit_screen/$encodedUri")
                 }
+            )
+        }
+
+        composable(
+            route = "note_wall/{dateKey}",
+            arguments = listOf(navArgument("dateKey") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val dateKey = backStackEntry.arguments?.getString("dateKey") ?: ""
+            NoteWallScreen(
+                dateKey = dateKey,
+                diaryViewModel = diaryViewModel,
+                onEditNote = { noteId ->
+                    navController.navigate("edit_diary/$noteId")
+                },
+                onBack = { navController.popBackStack() }
             )
         }
         
@@ -109,6 +134,37 @@ fun AppNavigation() {
                 onBack = {
                     navController.popBackStack()
                 }
+            )
+        }
+
+        composable("camera_screen") {
+            CameraScreen(
+                onImageCaptured = { uri ->
+                    val encodedUri = Uri.encode(uri.toString())
+                    navController.navigate("photo_edit_screen/$encodedUri") {
+                        popUpTo("camera_screen") { inclusive = true }
+                    }
+                },
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(
+            route = "photo_edit_screen/{imageUri}",
+            arguments = listOf(navArgument("imageUri") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val imageUriStr = backStackEntry.arguments?.getString("imageUri") ?: ""
+            val imageUri = Uri.parse(Uri.decode(imageUriStr))
+            PhotoEditScreen(
+                imageUri = imageUri,
+                authViewModel = authViewModel,
+                diaryViewModel = diaryViewModel,
+                onSave = {
+                    navController.navigate("diary_list") {
+                        popUpTo("diary_list") { inclusive = true }
+                    }
+                },
+                onBack = { navController.popBackStack() }
             )
         }
     }

@@ -8,11 +8,14 @@ import com.example.nhatky.data.repository.DiaryRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.*
 import javax.inject.Inject
 
 sealed class DiaryUiState {
     object Loading : DiaryUiState()
     data class Success(val diaries: List<DiaryEntry>) : DiaryUiState()
+    data class SuccessGrouped(val groupedDiaries: Map<String, List<DiaryEntry>>) : DiaryUiState()
     data class Error(val message: String) : DiaryUiState()
 }
 
@@ -25,6 +28,8 @@ class DiaryViewModel @Inject constructor(
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+    private val dateFormatter = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
 
     fun onSearchQueryChange(query: String, userId: String) {
         _searchQuery.value = query
@@ -40,7 +45,8 @@ class DiaryViewModel @Inject constructor(
                         _uiState.value = DiaryUiState.Error(e.message ?: "Unknown error")
                     }
                     .collect { diaries ->
-                        _uiState.value = DiaryUiState.Success(diaries)
+                        val grouped = diaries.groupBy { dateFormatter.format(Date(it.timestamp)) }
+                        _uiState.value = DiaryUiState.SuccessGrouped(grouped)
                     }
             } catch (e: Exception) {
                 _uiState.value = DiaryUiState.Error(e.message ?: "Unknown error")
@@ -62,7 +68,6 @@ class DiaryViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val newMediaUrls = imageUris.map { uri ->
-                    // Đơn giản hóa: Coi mọi thứ là ảnh nếu không có phần mở rộng video
                     val isVideo = uri.toString().lowercase().let { 
                         it.endsWith(".mp4") || it.contains("video") 
                     }
@@ -70,6 +75,7 @@ class DiaryViewModel @Inject constructor(
                 }
                 val totalMediaUrls = existingMediaUrls + newMediaUrls
                 
+                val existingDiary = if (diaryId != null) repository.getEntryById(diaryId) else null
                 val diary = DiaryEntry(
                     id = diaryId ?: "",
                     userId = userId,
@@ -78,6 +84,7 @@ class DiaryViewModel @Inject constructor(
                     mood = mood,
                     tags = tags,
                     mediaUrls = totalMediaUrls,
+                    timestamp = existingDiary?.timestamp ?: System.currentTimeMillis()
                 )
                 
                 if (diaryId == null) {

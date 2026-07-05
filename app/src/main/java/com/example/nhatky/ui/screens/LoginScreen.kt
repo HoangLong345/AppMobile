@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
@@ -25,9 +24,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.nhatky.ui.components.AppBackground
 import com.example.nhatky.ui.components.NhatKyButton
 import com.example.nhatky.ui.components.NhatKyTextField
-import com.example.nhatky.ui.components.PaperSurface
 import com.example.nhatky.ui.theme.SunsetGradientEnd
 import com.example.nhatky.ui.theme.SunsetGradientStart
 import com.example.nhatky.viewmodel.AuthViewModel
@@ -67,14 +66,24 @@ fun LoginScreen(
                 }
             } catch (e: Exception) {
                 isLoading = false
-                Toast.makeText(context, "Google Sign In Failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                val errorMessage = if (e is ApiException) {
+                    when (e.statusCode) {
+                        10 -> "Lỗi cấu hình (DEVELOPER_ERROR). Hãy kiểm tra SHA-1 và google-services.json."
+                        7 -> "Lỗi mạng. Vui lòng kiểm tra kết nối internet."
+                        12500 -> "Lỗi phiên bản Google Play Services hoặc cấu hình không khớp."
+                        else -> "Lỗi Google Sign In (${e.statusCode}): ${e.localizedMessage}"
+                    }
+                } else {
+                    "Lỗi không xác định: ${e.localizedMessage}"
+                }
+                Toast.makeText(context, errorMessage, Toast.LENGTH_LONG).show()
             }
         } else {
             isLoading = false
         }
     }
 
-    PaperSurface {
+    AppBackground {
         Column(
             modifier = Modifier
                 .fillMaxSize()
