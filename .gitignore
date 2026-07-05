@@ -14,10 +14,8 @@ local.properties
 .externalNativeBuild
 .cxx
 
-# Google Services (Firebase) - HIGHLY RECOMMENDED TO EXCLUDE
-# If your repo is public, hackers can use your API keys.
-# Your team members should get this file via a secure channel (Slack, Drive, etc.)
-app/google-services.json
+# Google Services (Firebase) - SHARED FOR TEAM CONVENIENCE
+# app/google-services.json
 
 # Secrets management
 secrets.properties

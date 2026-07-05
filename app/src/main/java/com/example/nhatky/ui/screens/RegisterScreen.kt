@@ -8,11 +8,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.Email
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -23,9 +19,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.example.nhatky.data.model.User
+import com.example.nhatky.ui.components.AppBackground
 import com.example.nhatky.ui.components.NhatKyButton
 import com.example.nhatky.ui.components.NhatKyTextField
-import com.example.nhatky.ui.components.PaperSurface
 import com.example.nhatky.viewmodel.AuthViewModel
 import java.text.SimpleDateFormat
 import java.util.*
@@ -45,7 +41,7 @@ fun RegisterScreen(viewModel: AuthViewModel, onRegisterSuccess: () -> Unit, onBa
     val context = LocalContext.current
     val scrollState = rememberScrollState()
 
-    PaperSurface {
+    AppBackground {
         Scaffold(
             topBar = {
                 TopAppBar(
@@ -78,7 +74,6 @@ fun RegisterScreen(viewModel: AuthViewModel, onRegisterSuccess: () -> Unit, onBa
                 
                 Spacer(modifier = Modifier.height(16.dp))
                 
-                // Date of Birth Selector
                 Box(modifier = Modifier.fillMaxWidth().clickable { showDatePicker = true }) {
                     NhatKyTextField(
                         value = dob,
@@ -86,7 +81,7 @@ fun RegisterScreen(viewModel: AuthViewModel, onRegisterSuccess: () -> Unit, onBa
                         label = "Ngày sinh",
                         leadingIcon = { Icon(Icons.Default.DateRange, null, tint = MaterialTheme.colorScheme.primary) },
                         modifier = Modifier.fillMaxWidth(),
-                        enabled = false // Disable direct text input, use picker instead
+                        enabled = false
                     )
                 }
 
