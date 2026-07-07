@@ -37,7 +37,8 @@ fun CreationHub(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 48.dp, start = 24.dp, end = 24.dp, top = 8.dp)
+                .navigationBarsPadding()
+                .padding(bottom = 24.dp, start = 24.dp, end = 24.dp, top = 8.dp)
         ) {
             Text(
                 text = "Tạo kỷ niệm mới",

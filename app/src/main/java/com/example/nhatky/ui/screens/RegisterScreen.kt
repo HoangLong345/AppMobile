@@ -44,15 +44,17 @@ fun RegisterScreen(viewModel: AuthViewModel, onRegisterSuccess: () -> Unit, onBa
     AppBackground {
         Scaffold(
             topBar = {
-                TopAppBar(
-                    title = { Text("Tạo tài khoản mới", fontWeight = FontWeight.Bold) },
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
-                )
+                Box(modifier = Modifier.statusBarsPadding()) {
+                    TopAppBar(
+                        title = { Text("Tạo tài khoản mới", fontWeight = FontWeight.Bold) },
+                        navigationIcon = {
+                            IconButton(onClick = onBack) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                    )
+                }
             },
             containerColor = Color.Transparent
         ) { padding ->
@@ -60,6 +62,7 @@ fun RegisterScreen(viewModel: AuthViewModel, onRegisterSuccess: () -> Unit, onBa
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
+                    .navigationBarsPadding()
                     .verticalScroll(scrollState)
                     .padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
