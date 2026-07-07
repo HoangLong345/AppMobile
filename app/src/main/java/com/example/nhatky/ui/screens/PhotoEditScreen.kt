@@ -8,6 +8,8 @@ import android.net.Uri
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
+import android.widget.MediaController
+import android.widget.VideoView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -51,8 +53,8 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.viewinterop.AndroidView
 import kotlin.math.roundToInt
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -75,6 +77,7 @@ data class TextOverlay(
     var text: String,
     var position: Offset,
     var color: Color,
+    var scale: Float = 1f,
     var fontSize: Float = 24f,
     var rotation: Float = 0f
 )
@@ -90,6 +93,12 @@ fun PhotoEditScreen(
 ) {
     val context = LocalContext.current
     val user by authViewModel.currentUser.collectAsState()
+
+    // BIẾN QUAN TRỌNG: Kiểm tra xem Uri truyền vào là Ảnh hay Video
+    val isVideo = remember(imageUri) {
+        val mimeType = context.contentResolver.getType(imageUri)
+        mimeType?.startsWith("video") == true || imageUri.toString().contains("video") || imageUri.toString().endsWith(".mp4")
+    }
 
     var currentPath by remember { mutableStateOf<DrawPath?>(null) }
     val paths = remember { mutableStateListOf<DrawPath>() }
@@ -110,7 +119,7 @@ fun PhotoEditScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Chỉnh sửa", fontWeight = FontWeight.Bold) },
+                title = { Text(if (isVideo) "Xem trước Video" else "Chỉnh sửa Ảnh", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.Close, contentDescription = "Close")
@@ -119,27 +128,20 @@ fun PhotoEditScreen(
                 actions = {
                     TextButton(
                         onClick = {
-                            if (canvasSize.width == 0 || canvasSize.height == 0) return@TextButton
+                            if (!isVideo && (canvasSize.width == 0 || canvasSize.height == 0)) return@TextButton
 
                             isLoading = true
                             user?.uid?.let { uid ->
-                                val editedUri = flattenImage(
-                                    context = context,
-                                    originalUri = imageUri,
-                                    paths = paths,
-                                    texts = texts,
-                                    canvasSize = canvasSize
-                                )
-
-                                if (editedUri != null) {
+                                if (isVideo) {
+                                    // LƯU VIDEO: Không qua flattenImage, lưu trực tiếp URL
                                     diaryViewModel.addOrUpdateDiary(
                                         diaryId = null,
                                         userId = uid,
-                                        title = "Kỷ niệm ảnh",
-                                        content = "Kỷ niệm ảnh đã chỉnh sửa",
+                                        title = "Kỷ niệm Video",
+                                        content = "Video kỷ niệm",
                                         mood = "Bình thường",
                                         tags = emptyList(),
-                                        imageUris = listOf(editedUri),
+                                        imageUris = listOf(imageUri),
                                         existingMediaUrls = emptyList(),
                                         onComplete = { success ->
                                             isLoading = false
@@ -147,7 +149,33 @@ fun PhotoEditScreen(
                                         }
                                     )
                                 } else {
-                                    isLoading = false
+                                    // LƯU ẢNH: Trộn Canvas Vẽ/Chữ thành 1 file ảnh
+                                    val editedUri = flattenImage(
+                                        context = context,
+                                        originalUri = imageUri,
+                                        paths = paths,
+                                        texts = texts,
+                                        canvasSize = canvasSize
+                                    )
+
+                                    if (editedUri != null) {
+                                        diaryViewModel.addOrUpdateDiary(
+                                            diaryId = null,
+                                            userId = uid,
+                                            title = "Kỷ niệm ảnh",
+                                            content = "Kỷ niệm ảnh đã chỉnh sửa",
+                                            mood = "Bình thường",
+                                            tags = emptyList(),
+                                            imageUris = listOf(editedUri),
+                                            existingMediaUrls = emptyList(),
+                                            onComplete = { success ->
+                                                isLoading = false
+                                                if (success) onSave()
+                                            }
+                                        )
+                                    } else {
+                                        isLoading = false
+                                    }
                                 }
                             }
                         },
@@ -163,78 +191,87 @@ fun PhotoEditScreen(
             )
         },
         bottomBar = {
-            Surface(
-                tonalElevation = 8.dp,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly
-                    ) {
-                        EditModeItem(
-                            icon = Icons.Default.Edit,
-                            isSelected = editMode == EditMode.DRAW,
-                            onClick = { editMode = EditMode.DRAW }
-                        )
-                        EditModeItem(
-                            icon = Icons.Default.AutoFixNormal,
-                            isSelected = editMode == EditMode.ERASE,
-                            onClick = { editMode = EditMode.ERASE }
-                        )
-                        EditModeItem(
-                            icon = Icons.Default.Title,
-                            isSelected = editMode == EditMode.TEXT,
-                            onClick = { editMode = EditMode.TEXT }
-                        )
-                        IconButton(onClick = {
-                            if (actionHistory.isNotEmpty()) {
-                                val lastAction = actionHistory.removeAt(actionHistory.size - 1)
-                                when (lastAction) {
-                                    ActionType.DRAW -> if (paths.isNotEmpty()) paths.removeAt(paths.size - 1)
-                                    ActionType.TEXT -> if (texts.isNotEmpty()) texts.removeAt(texts.size - 1)
+            // ẨN THANH CÔNG CỤ VẼ NẾU LÀ VIDEO
+            if (!isVideo) {
+                Surface(
+                    tonalElevation = 8.dp,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceEvenly
+                        ) {
+                            EditModeItem(
+                                icon = Icons.Default.Edit,
+                                isSelected = editMode == EditMode.DRAW,
+                                onClick = {
+                                    editMode = EditMode.DRAW
+                                    editingTextId = null
+                                }
+                            )
+                            EditModeItem(
+                                icon = Icons.Default.AutoFixNormal,
+                                isSelected = editMode == EditMode.ERASE,
+                                onClick = {
+                                    editMode = EditMode.ERASE
+                                    editingTextId = null
+                                }
+                            )
+                            EditModeItem(
+                                icon = Icons.Default.Title,
+                                isSelected = editMode == EditMode.TEXT,
+                                onClick = { editMode = EditMode.TEXT }
+                            )
+                            IconButton(onClick = {
+                                if (actionHistory.isNotEmpty()) {
+                                    val lastAction = actionHistory.removeAt(actionHistory.size - 1)
+                                    when (lastAction) {
+                                        ActionType.DRAW -> if (paths.isNotEmpty()) paths.removeAt(paths.size - 1)
+                                        ActionType.TEXT -> if (texts.isNotEmpty()) texts.removeAt(texts.size - 1)
+                                    }
+                                }
+                            }) {
+                                Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = "Undo last")
+                            }
+                        }
+
+                        if (editMode == EditMode.DRAW || editMode == EditMode.ERASE || editMode == EditMode.TEXT) {
+                            if (editMode == EditMode.DRAW || editMode == EditMode.ERASE) {
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.LineWeight, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(20.dp))
+                                    Slider(
+                                        value = strokeWidth,
+                                        onValueChange = { strokeWidth = it },
+                                        valueRange = 5f..50f,
+                                        modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
+                                    )
+                                    Text("${strokeWidth.roundToInt()}", fontSize = 12.sp, color = Color.Gray)
                                 }
                             }
-                        }) {
-                            Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = "Undo last")
-                        }
-                    }
 
-                    if (editMode == EditMode.DRAW || editMode == EditMode.ERASE || editMode == EditMode.TEXT) {
-                        if (editMode == EditMode.DRAW || editMode == EditMode.ERASE) {
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.LineWeight, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(20.dp))
-                                Slider(
-                                    value = strokeWidth,
-                                    onValueChange = { strokeWidth = it },
-                                    valueRange = 5f..50f,
-                                    modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
-                                )
-                                Text("${strokeWidth.roundToInt()}", fontSize = 12.sp, color = Color.Gray)
-                            }
-                        }
-
-                        if (editMode == EditMode.DRAW || editMode == EditMode.TEXT) {
-                            Spacer(modifier = Modifier.height(if (editMode == EditMode.TEXT) 16.dp else 8.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceEvenly
-                            ) {
-                                colors.forEach { color ->
-                                    Surface(
-                                        onClick = { selectedColor = color },
-                                        shape = CircleShape,
-                                        color = color,
-                                        modifier = Modifier
-                                            .size(28.dp)
-                                            .border(
-                                                width = if (selectedColor == color) 2.dp else 0.dp,
-                                                color = Color.Gray,
-                                                shape = CircleShape
-                                            )
-                                    ) {}
+                            if (editMode == EditMode.DRAW || editMode == EditMode.TEXT) {
+                                Spacer(modifier = Modifier.height(if (editMode == EditMode.TEXT) 16.dp else 8.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceEvenly
+                                ) {
+                                    colors.forEach { color ->
+                                        Surface(
+                                            onClick = { selectedColor = color },
+                                            shape = CircleShape,
+                                            color = color,
+                                            modifier = Modifier
+                                                .size(28.dp)
+                                                .border(
+                                                    width = if (selectedColor == color) 2.dp else 0.dp,
+                                                    color = Color.Gray,
+                                                    shape = CircleShape
+                                                )
+                                        ) {}
+                                    }
                                 }
                             }
                         }
@@ -250,234 +287,268 @@ fun PhotoEditScreen(
                 .background(Color.Black),
             contentAlignment = Alignment.Center
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(3f / 4f)
-                    .onGloballyPositioned { canvasSize = it.size }
-                    .pointerInput(editMode) {
-                        if (editMode == EditMode.DRAW) {
-                            detectDragGestures(
-                                onDragStart = { offset ->
-                                    currentPath = DrawPath(
-                                        path = Path().apply { moveTo(offset.x, offset.y) },
-                                        color = selectedColor,
-                                        strokeWidth = strokeWidth,
-                                        points = listOf(offset)
-                                    )
-                                },
-                                onDrag = { change, _ ->
-                                    val point = change.position
-                                    currentPath?.path?.lineTo(point.x, point.y)
-                                    currentPath = currentPath?.copy(points = currentPath!!.points + point)
-                                },
-                                onDragEnd = {
-                                    currentPath?.let {
-                                        paths.add(it)
-                                        actionHistory.add(ActionType.DRAW)
-                                    }
-                                    currentPath = null
-                                }
-                            )
-                        } else if (editMode == EditMode.TEXT) {
-                            detectTapGestures { offset ->
-                                val newText = TextOverlay(
-                                    text = "",
-                                    position = offset,
-                                    color = selectedColor
-                                )
-                                texts.add(newText)
-                                actionHistory.add(ActionType.TEXT)
-                                editingTextId = newText.id
+            if (isVideo) {
+                // TRÌNH PHÁT VIDEO VỚI THANH THỜI GIAN
+                AndroidView(
+                    factory = { ctx ->
+                        VideoView(ctx).apply {
+                            setVideoURI(imageUri)
+
+                            // Thêm MediaController để người dùng có thể tua Video (thanh thời gian)
+                            val mediaController = MediaController(ctx)
+                            mediaController.setAnchorView(this)
+                            setMediaController(mediaController)
+
+                            setOnPreparedListener { mp ->
+                                mp.isLooping = true
+                                start() // Tự động phát khi tải xong
                             }
-                        } else if (editMode == EditMode.ERASE) {
-                            detectDragGestures(
-                                onDragStart = { offset ->
-                                    currentPath = DrawPath(
-                                        path = Path().apply { moveTo(offset.x, offset.y) },
-                                        color = Color.Transparent,
-                                        strokeWidth = strokeWidth,
-                                        points = listOf(offset),
-                                        isEraser = true
-                                    )
-                                },
-                                onDrag = { change, _ ->
-                                    val point = change.position
-                                    currentPath?.path?.lineTo(point.x, point.y)
-                                    currentPath = currentPath?.copy(points = currentPath!!.points + point)
-                                },
-                                onDragEnd = {
-                                    currentPath?.let {
-                                        paths.add(it)
-                                        actionHistory.add(ActionType.DRAW)
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().aspectRatio(3f / 4f)
+                )
+            } else {
+                // TRÌNH CHỈNH SỬA ẢNH (Giữ nguyên như cũ)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(3f / 4f)
+                        .onGloballyPositioned { canvasSize = it.size }
+                        .pointerInput(editMode) {
+                            if (editMode == EditMode.DRAW) {
+                                detectDragGestures(
+                                    onDragStart = { offset ->
+                                        currentPath = DrawPath(
+                                            path = Path().apply { moveTo(offset.x, offset.y) },
+                                            color = selectedColor,
+                                            strokeWidth = strokeWidth,
+                                            points = listOf(offset)
+                                        )
+                                    },
+                                    onDrag = { change, _ ->
+                                        val point = change.position
+                                        currentPath?.path?.lineTo(point.x, point.y)
+                                        currentPath = currentPath?.copy(points = currentPath!!.points + point)
+                                    },
+                                    onDragEnd = {
+                                        currentPath?.let {
+                                            paths.add(it)
+                                            actionHistory.add(ActionType.DRAW)
+                                        }
+                                        currentPath = null
                                     }
-                                    currentPath = null
+                                )
+                            } else if (editMode == EditMode.TEXT) {
+                                detectTapGestures { offset ->
+                                    val newText = TextOverlay(
+                                        text = "",
+                                        position = offset,
+                                        color = selectedColor
+                                    )
+                                    texts.add(newText)
+                                    actionHistory.add(ActionType.TEXT)
+                                    editingTextId = newText.id
                                 }
+                            } else if (editMode == EditMode.ERASE) {
+                                detectDragGestures(
+                                    onDragStart = { offset ->
+                                        currentPath = DrawPath(
+                                            path = Path().apply { moveTo(offset.x, offset.y) },
+                                            color = Color.Transparent,
+                                            strokeWidth = strokeWidth,
+                                            points = listOf(offset),
+                                            isEraser = true
+                                        )
+                                    },
+                                    onDrag = { change, _ ->
+                                        val point = change.position
+                                        currentPath?.path?.lineTo(point.x, point.y)
+                                        currentPath = currentPath?.copy(points = currentPath!!.points + point)
+                                    },
+                                    onDragEnd = {
+                                        currentPath?.let {
+                                            paths.add(it)
+                                            actionHistory.add(ActionType.DRAW)
+                                        }
+                                        currentPath = null
+                                    }
+                                )
+                            }
+                        }
+                ) {
+                    AsyncImage(
+                        model = imageUri,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit
+                    )
+
+                    Canvas(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+                    ) {
+                        paths.forEach { drawPath ->
+                            drawPath(
+                                path = drawPath.path,
+                                color = drawPath.color,
+                                style = Stroke(
+                                    width = drawPath.strokeWidth.dp.toPx(),
+                                    cap = StrokeCap.Round,
+                                    join = StrokeJoin.Round
+                                ),
+                                blendMode = if (drawPath.isEraser) BlendMode.Clear else BlendMode.SrcOver
+                            )
+                        }
+                        currentPath?.let { drawPath ->
+                            drawPath(
+                                path = drawPath.path,
+                                color = drawPath.color,
+                                style = Stroke(
+                                    width = drawPath.strokeWidth.dp.toPx(),
+                                    cap = StrokeCap.Round,
+                                    join = StrokeJoin.Round
+                                ),
+                                blendMode = if (drawPath.isEraser) BlendMode.Clear else BlendMode.SrcOver
                             )
                         }
                     }
-            ) {
-                AsyncImage(
-                    model = imageUri,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Fit
-                )
 
-                Canvas(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
-                ) {
-                    paths.forEach { drawPath ->
-                        drawPath(
-                            path = drawPath.path,
-                            color = drawPath.color,
-                            style = Stroke(
-                                width = drawPath.strokeWidth.dp.toPx(),
-                                cap = StrokeCap.Round,
-                                join = StrokeJoin.Round
-                            ),
-                            blendMode = if (drawPath.isEraser) BlendMode.Clear else BlendMode.SrcOver
+                    if (editingTextId != null) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                ) {
+                                    editingTextId = null
+                                }
                         )
                     }
-                    currentPath?.let { drawPath ->
-                        drawPath(
-                            path = drawPath.path,
-                            color = drawPath.color,
-                            style = Stroke(
-                                width = drawPath.strokeWidth.dp.toPx(),
-                                cap = StrokeCap.Round,
-                                join = StrokeJoin.Round
-                            ),
-                            blendMode = if (drawPath.isEraser) BlendMode.Clear else BlendMode.SrcOver
-                        )
-                    }
-                }
 
-                if (editingTextId != null) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null
-                            ) {
-                                editingTextId = null
-                            }
-                    )
-                }
+                    // Text Layers
+                    val sortedTexts = texts.sortedBy { if (it.id == editingTextId) 1 else 0 }
 
-                // Text Layers
-                texts.forEach { textOverlay ->
-                    key(textOverlay.id) {
-                        val isEditing = editingTextId == textOverlay.id
-                        val focusRequester = remember { FocusRequester() }
+                    sortedTexts.forEach { textOverlay ->
+                        key(textOverlay.id) {
+                            val isEditing = editingTextId == textOverlay.id
+                            val focusRequester = remember { FocusRequester() }
 
-                        TransformableOverlay(
-                            initialPosition = textOverlay.position,
-                            onPositionChanged = { newPos ->
-                                textOverlay.position = newPos
-                            },
-                            onZoom = { zoomFactor ->
-                                val index = texts.indexOfFirst { it.id == textOverlay.id }
-                                if (index != -1) {
-                                    val currentSize = texts[index].fontSize
-                                    val newSize = (currentSize * zoomFactor).coerceIn(10f, 200f)
-                                    texts[index] = texts[index].copy(fontSize = newSize)
-                                }
-                            },
-                            onRotate = { rotationDelta ->
-                                val index = texts.indexOfFirst { it.id == textOverlay.id }
-                                if (index != -1) {
-                                    val currentRotation = texts[index].rotation
-                                    texts[index] = texts[index].copy(rotation = currentRotation + rotationDelta)
-                                }
-                            }
-                        ) {
-                            Box(
-                                modifier = Modifier.graphicsLayer(rotationZ = textOverlay.rotation)
-                            ) {
-                                Box(modifier = Modifier.padding(10.dp)) {
-                                    if (isEditing) {
-                                        Canvas(modifier = Modifier.matchParentSize()) {
-                                            drawRect(
-                                                color = Color.White,
-                                                style = Stroke(
-                                                    width = 1.dp.toPx(),
-                                                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
-                                                )
-                                            )
-                                        }
+                            TransformableOverlay(
+                                initialPosition = textOverlay.position,
+                                initialScale = textOverlay.scale,
+                                initialRotation = textOverlay.rotation,
+                                isSelected = isEditing,
+                                isInteractable = editMode == EditMode.TEXT,
+                                onTransform = { newPos, newScale, newRot ->
+                                    val index = texts.indexOfFirst { it.id == textOverlay.id }
+                                    if (index != -1) {
+                                        texts[index] = texts[index].copy(
+                                            position = newPos,
+                                            scale = newScale,
+                                            rotation = newRot
+                                        )
                                     }
+                                },
+                                onSelect = {
+                                    editingTextId = textOverlay.id
+                                }
+                            ) {
+                                Box(modifier = Modifier.padding(20.dp)) {
+                                    Box {
+                                        Box(
+                                            modifier = Modifier
+                                                .padding(top = 12.dp, end = 12.dp)
+                                                .padding(10.dp)
+                                        ) {
+                                            if (isEditing) {
+                                                Canvas(modifier = Modifier.matchParentSize()) {
+                                                    drawRect(
+                                                        color = Color.White,
+                                                        style = Stroke(
+                                                            width = 1.dp.toPx(),
+                                                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+                                                        )
+                                                    )
+                                                }
+                                            }
 
-                                    Box(
-                                        modifier = Modifier.padding(2.dp)
-                                    ) {
-                                        var textFieldValue by remember(textOverlay.id) {
-                                            mutableStateOf(TextFieldValue(textOverlay.text, TextRange(textOverlay.text.length)))
+                                            Box(
+                                                modifier = Modifier.padding(2.dp)
+                                            ) {
+                                                var textFieldValue by remember(textOverlay.id) {
+                                                    mutableStateOf(TextFieldValue(textOverlay.text, TextRange(textOverlay.text.length)))
+                                                }
+
+                                                Box {
+                                                    BasicTextField(
+                                                        value = textFieldValue,
+                                                        onValueChange = { newValue ->
+                                                            textFieldValue = newValue
+                                                            textOverlay.text = newValue.text
+                                                        },
+                                                        enabled = isEditing,
+                                                        textStyle = TextStyle(
+                                                            color = textOverlay.color,
+                                                            fontSize = textOverlay.fontSize.sp,
+                                                            fontWeight = FontWeight.Bold
+                                                        ),
+                                                        cursorBrush = SolidColor(textOverlay.color),
+                                                        modifier = (if (isEditing) Modifier.focusRequester(focusRequester) else Modifier)
+                                                            .width(IntrinsicSize.Min),
+                                                        decorationBox = { innerTextField ->
+                                                            Box(contentAlignment = Alignment.CenterStart) {
+                                                                if (textFieldValue.text.isEmpty()) {
+                                                                    Text(
+                                                                        "T",
+                                                                        color = textOverlay.color.copy(alpha = 0.5f),
+                                                                        fontSize = textOverlay.fontSize.sp,
+                                                                        fontWeight = FontWeight.Bold
+                                                                    )
+                                                                }
+                                                                innerTextField()
+                                                            }
+                                                        }
+                                                    )
+                                                }
+                                            }
                                         }
 
                                         Box(
-                                            modifier = if (!isEditing) Modifier.pointerInput(textOverlay.id) {
-                                                detectTapGestures { editingTextId = textOverlay.id }
-                                            } else Modifier
-                                        ) {
-                                            BasicTextField(
-                                                value = textFieldValue,
-                                                onValueChange = { newValue ->
-                                                    textFieldValue = newValue
-                                                    textOverlay.text = newValue.text
-                                                },
-                                                enabled = isEditing,
-                                                textStyle = TextStyle(
-                                                    color = textOverlay.color,
-                                                    fontSize = textOverlay.fontSize.sp,
-                                                    fontWeight = FontWeight.Bold
+                                            modifier = Modifier
+                                                .align(Alignment.TopEnd)
+                                                .size(24.dp)
+                                                .alpha(if (isEditing) 1f else 0f)
+                                                .background(if (isEditing) Color.Red else Color.Transparent, CircleShape)
+                                                .then(
+                                                    if (isEditing) Modifier.clickable {
+                                                        texts.removeAll { it.id == textOverlay.id }
+                                                        editingTextId = null
+                                                    } else Modifier
                                                 ),
-                                                cursorBrush = SolidColor(textOverlay.color),
-                                                modifier = (if (isEditing) Modifier.focusRequester(focusRequester) else Modifier)
-                                                    .width(IntrinsicSize.Min),
-                                                decorationBox = { innerTextField ->
-                                                    Box(contentAlignment = Alignment.CenterStart) {
-                                                        if (textFieldValue.text.isEmpty()) {
-                                                            Text("T", color = textOverlay.color.copy(alpha = 0.5f), fontSize = textOverlay.fontSize.sp, fontWeight = FontWeight.Bold)
-                                                        }
-                                                        innerTextField()
-                                                    }
-                                                }
-                                            )
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            if (isEditing) {
+                                                Icon(
+                                                    Icons.Default.Close,
+                                                    contentDescription = "Delete",
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
                                         }
-                                    }
-                                }
 
-                                Box(
-                                    modifier = Modifier
-                                        .align(Alignment.TopEnd)
-                                        .size(24.dp)
-                                        .alpha(if (isEditing) 1f else 0f)
-                                        .background(if (isEditing) Color.Red else Color.Transparent, CircleShape)
-                                        .then(
-                                            if (isEditing) Modifier.clickable {
-                                                texts.removeAll { it.id == textOverlay.id }
-                                                editingTextId = null
-                                            } else Modifier
-                                        ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    if (isEditing) {
-                                        Icon(
-                                            Icons.Default.Close,
-                                            contentDescription = "Delete",
-                                            tint = Color.White,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
-                                }
-
-                                LaunchedEffect(textOverlay.id, isEditing) {
-                                    if (isEditing) {
-                                        focusRequester.requestFocus()
+                                        LaunchedEffect(textOverlay.id, isEditing) {
+                                            if (isEditing) {
+                                                try {
+                                                    kotlinx.coroutines.delay(50)
+                                                    focusRequester.requestFocus()
+                                                } catch (e: Exception) {
+                                                    e.printStackTrace()
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -502,34 +573,45 @@ fun EditModeItem(icon: androidx.compose.ui.graphics.vector.ImageVector, isSelect
 @Composable
 fun TransformableOverlay(
     initialPosition: Offset,
-    onPositionChanged: (Offset) -> Unit,
-    onZoom: (Float) -> Unit = {},
-    onRotate: (Float) -> Unit = {},
+    initialScale: Float = 1f,
+    initialRotation: Float = 0f,
+    isSelected: Boolean,
+    isInteractable: Boolean,
+    onTransform: (Offset, Float, Float) -> Unit,
+    onSelect: () -> Unit,
     content: @Composable () -> Unit
 ) {
     var position by remember { mutableStateOf(initialPosition) }
-
-    val currentOnZoom by rememberUpdatedState(onZoom)
-    val currentOnRotate by rememberUpdatedState(onRotate)
-    val currentOnPositionChanged by rememberUpdatedState(onPositionChanged)
+    var scale by remember { mutableStateOf(initialScale) }
+    var rotation by remember { mutableStateOf(initialRotation) }
 
     Box(
         modifier = Modifier
-            .offset { IntOffset(position.x.roundToInt(), position.y.roundToInt()) }
-            .pointerInput(Unit) {
-                detectTransformGestures { _, pan, zoom, rotationDelta ->
-                    if (zoom != 1f) {
-                        currentOnZoom(zoom)
-                    }
-                    if (rotationDelta != 0f) {
-                        currentOnRotate(rotationDelta)
-                    }
-                    if (pan != Offset.Zero) {
-                        position += pan
-                        currentOnPositionChanged(position)
-                    }
-                }
+            .graphicsLayer {
+                translationX = position.x
+                translationY = position.y
+                scaleX = scale
+                scaleY = scale
+                rotationZ = rotation
             }
+            .then(
+                if (isInteractable) {
+                    Modifier.pointerInput(isSelected) {
+                        if (isSelected) {
+                            detectTransformGestures { _, pan, zoom, rotationDelta ->
+                                position += pan
+                                scale = (scale * zoom).coerceIn(0.5f, 5f)
+                                rotation += rotationDelta
+                                onTransform(position, scale, rotation)
+                            }
+                        } else {
+                            detectTapGestures {
+                                onSelect()
+                            }
+                        }
+                    }
+                } else Modifier
+            )
     ) {
         content()
     }
@@ -593,7 +675,7 @@ fun flattenImage(
 
         texts.forEach { textOverlay ->
             textPaint.color = textOverlay.color.toArgb()
-            textPaint.textSize = textOverlay.fontSize * scaleX * 1.5f
+            textPaint.textSize = textOverlay.fontSize * textOverlay.scale * scaleX * 1.5f
 
             val staticLayout = StaticLayout.Builder.obtain(
                 textOverlay.text.ifEmpty { "T" },
@@ -609,9 +691,8 @@ fun flattenImage(
 
             canvas.save()
 
-            // Cập nhật vị trí lưu do đã thay đổi padding bên trong (10 + 2 = 12)
-            val pxDrawX = (textOverlay.position.x + 12 * density) * scaleX
-            val pxDrawY = (textOverlay.position.y + 12 * density) * scaleY
+            val pxDrawX = (textOverlay.position.x + 32 * density) * scaleX
+            val pxDrawY = (textOverlay.position.y + 44 * density) * scaleY
 
             val pivotX = pxDrawX + (staticLayout.width / 2f)
             val pivotY = pxDrawY + (staticLayout.height / 2f)
