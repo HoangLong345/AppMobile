@@ -62,7 +62,8 @@ fun DiaryListScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.background)
-                    .padding(top = 16.dp)
+                    .statusBarsPadding()
+                    .padding(top = 8.dp)
             ) {
                 Row(
                     modifier = Modifier
