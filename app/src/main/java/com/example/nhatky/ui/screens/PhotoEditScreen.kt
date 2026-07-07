@@ -5,17 +5,25 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Paint
 import android.net.Uri
+import android.text.Layout
+import android.text.StaticLayout
+import android.text.TextPaint
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -30,12 +38,24 @@ import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import kotlin.math.roundToInt
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -47,14 +67,17 @@ import java.io.FileOutputStream
 data class DrawPath(
     val path: Path,
     val color: Color,
-    val strokeWidth: Float
+    val strokeWidth: Float,
+    val points: List<Offset> = emptyList(),
+    val isEraser: Boolean = false
 )
 
 data class TextOverlay(
     val id: Long = System.nanoTime(),
     var text: String,
     var position: Offset,
-    var color: Color
+    var color: Color,
+    var fontSize: Float = 24f
 )
 
 data class StickerOverlay(
@@ -81,14 +104,14 @@ fun PhotoEditScreen(
     val stickers = remember { mutableStateListOf<StickerOverlay>() }
     
     var selectedColor by remember { mutableStateOf(Color.Red) }
-    var strokeWidth by remember { mutableStateOf(5f) }
+    var strokeWidth by remember { mutableStateOf(10f) }
     var editMode by remember { mutableStateOf(EditMode.DRAW) }
     var isLoading by remember { mutableStateOf(false) }
     
-    var showTextDialog by remember { mutableStateOf(false) }
-    var textInput by remember { mutableStateOf("") }
-    
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
+    
+    val actionHistory = remember { mutableStateListOf<ActionType>() }
+    var editingTextId by remember { mutableStateOf<Long?>(null) }
 
     val colors = listOf(Color.Red, Color.Blue, Color.Green, Color.Yellow, Color.Black, Color.White)
     val stickerList = listOf("❤️", "⭐", "🔥", "🌈", "🍀", "🌸", "🍦", "🎁", "🐶", "🐱")
@@ -119,12 +142,14 @@ fun PhotoEditScreen(
                                 
                                 if (editedUri != null) {
                                     diaryViewModel.addOrUpdateDiary(
+                                        diaryId = null,
                                         userId = uid,
                                         title = "Kỷ niệm ảnh",
                                         content = "Kỷ niệm ảnh đã chỉnh sửa",
                                         mood = "Bình thường",
                                         tags = emptyList(),
                                         imageUris = listOf(editedUri),
+                                        existingMediaUrls = emptyList(),
                                         onComplete = { success ->
                                             isLoading = false
                                             if (success) onSave()
@@ -163,11 +188,15 @@ fun PhotoEditScreen(
                             onClick = { editMode = EditMode.DRAW }
                         )
                         EditModeItem(
-                            icon = Icons.Default.Info, // Fallback for TextFields
+                            icon = Icons.Default.AutoFixNormal, // Eraser-like icon
+                            isSelected = editMode == EditMode.ERASE,
+                            onClick = { editMode = EditMode.ERASE }
+                        )
+                        EditModeItem(
+                            icon = Icons.Default.Title, // Better text icon
                             isSelected = editMode == EditMode.TEXT,
                             onClick = { 
                                 editMode = EditMode.TEXT
-                                showTextDialog = true 
                             }
                         )
                         EditModeItem(
@@ -176,33 +205,56 @@ fun PhotoEditScreen(
                             onClick = { editMode = EditMode.STICKER }
                         )
                         IconButton(onClick = { 
-                            paths.clear() 
-                            texts.clear()
-                            stickers.clear()
+                            if (actionHistory.isNotEmpty()) {
+                                val lastAction = actionHistory.removeAt(actionHistory.size - 1)
+                                when (lastAction) {
+                                    ActionType.DRAW -> if (paths.isNotEmpty()) paths.removeAt(paths.size - 1)
+                                    ActionType.TEXT -> if (texts.isNotEmpty()) texts.removeAt(texts.size - 1)
+                                    ActionType.STICKER -> if (stickers.isNotEmpty()) stickers.removeAt(stickers.size - 1)
+                                }
+                            }
                         }) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Clear all")
+                            Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = "Undo last")
                         }
                     }
                     
-                    if (editMode == EditMode.DRAW) {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceEvenly
-                        ) {
-                            colors.forEach { color ->
-                                Surface(
-                                    onClick = { selectedColor = color },
-                                    shape = CircleShape,
-                                    color = color,
-                                    modifier = Modifier
-                                        .size(28.dp)
-                                        .border(
-                                            width = if (selectedColor == color) 2.dp else 0.dp,
-                                            color = Color.Gray,
-                                            shape = CircleShape
-                                        )
-                                ) {}
+                    if (editMode == EditMode.DRAW || editMode == EditMode.ERASE || editMode == EditMode.TEXT) {
+                        if (editMode == EditMode.DRAW || editMode == EditMode.ERASE) {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            
+                            // Stroke Width Slider
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.LineWeight, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(20.dp))
+                                Slider(
+                                    value = strokeWidth,
+                                    onValueChange = { strokeWidth = it },
+                                    valueRange = 5f..50f,
+                                    modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
+                                )
+                                Text("${strokeWidth.roundToInt()}", fontSize = 12.sp, color = Color.Gray)
+                            }
+                        }
+
+                        if (editMode == EditMode.DRAW || editMode == EditMode.TEXT) {
+                            Spacer(modifier = Modifier.height(if (editMode == EditMode.TEXT) 16.dp else 8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceEvenly
+                            ) {
+                                colors.forEach { color ->
+                                    Surface(
+                                        onClick = { selectedColor = color },
+                                        shape = CircleShape,
+                                        color = color,
+                                        modifier = Modifier
+                                            .size(28.dp)
+                                            .border(
+                                                width = if (selectedColor == color) 2.dp else 0.dp,
+                                                color = Color.Gray,
+                                                shape = CircleShape
+                                            )
+                                    ) {}
+                                }
                             }
                         }
                     }
@@ -219,6 +271,7 @@ fun PhotoEditScreen(
                                     fontSize = 24.sp,
                                     modifier = Modifier.clickable {
                                         stickers.add(StickerOverlay(emoji = emoji, position = Offset(canvasSize.width / 2f, canvasSize.height / 2f)))
+                                        actionHistory.add(ActionType.STICKER)
                                     }
                                 )
                             }
@@ -244,16 +297,58 @@ fun PhotoEditScreen(
                         if (editMode == EditMode.DRAW) {
                             detectDragGestures(
                                 onDragStart = { offset ->
-                                    currentPath = DrawPath(Path().apply { moveTo(offset.x, offset.y) }, selectedColor, strokeWidth)
+                                    currentPath = DrawPath(
+                                        path = Path().apply { moveTo(offset.x, offset.y) },
+                                        color = selectedColor,
+                                        strokeWidth = strokeWidth,
+                                        points = listOf(offset)
+                                    )
                                 },
                                 onDrag = { change, _ ->
-                                    currentPath?.path?.lineTo(change.position.x, change.position.y)
-                                    val temp = currentPath
-                                    currentPath = null
-                                    currentPath = temp
+                                    val point = change.position
+                                    currentPath?.path?.lineTo(point.x, point.y)
+                                    currentPath = currentPath?.copy(points = currentPath!!.points + point)
                                 },
                                 onDragEnd = {
-                                    currentPath?.let { paths.add(it) }
+                                    currentPath?.let { 
+                                        paths.add(it) 
+                                        actionHistory.add(ActionType.DRAW)
+                                    }
+                                    currentPath = null
+                                }
+                            )
+                        } else if (editMode == EditMode.TEXT) {
+                            detectTapGestures { offset ->
+                                val newText = TextOverlay(
+                                    text = "",
+                                    position = offset,
+                                    color = selectedColor
+                                )
+                                texts.add(newText)
+                                actionHistory.add(ActionType.TEXT)
+                                editingTextId = newText.id
+                            }
+                        } else if (editMode == EditMode.ERASE) {
+                            detectDragGestures(
+                                onDragStart = { offset ->
+                                    currentPath = DrawPath(
+                                        path = Path().apply { moveTo(offset.x, offset.y) },
+                                        color = Color.Transparent,
+                                        strokeWidth = strokeWidth,
+                                        points = listOf(offset),
+                                        isEraser = true
+                                    )
+                                },
+                                onDrag = { change, _ ->
+                                    val point = change.position
+                                    currentPath?.path?.lineTo(point.x, point.y)
+                                    currentPath = currentPath?.copy(points = currentPath!!.points + point)
+                                },
+                                onDragEnd = {
+                                    currentPath?.let { 
+                                        paths.add(it) 
+                                        actionHistory.add(ActionType.DRAW)
+                                    }
                                     currentPath = null
                                 }
                             )
@@ -266,8 +361,12 @@ fun PhotoEditScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Fit
                 )
-                
-                Canvas(modifier = Modifier.fillMaxSize()) {
+
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+                ) {
                     paths.forEach { drawPath ->
                         drawPath(
                             path = drawPath.path,
@@ -276,7 +375,8 @@ fun PhotoEditScreen(
                                 width = drawPath.strokeWidth.dp.toPx(),
                                 cap = StrokeCap.Round,
                                 join = StrokeJoin.Round
-                            )
+                            ),
+                            blendMode = if (drawPath.isEraser) BlendMode.Clear else BlendMode.SrcOver
                         )
                     }
                     currentPath?.let { drawPath ->
@@ -287,73 +387,167 @@ fun PhotoEditScreen(
                                 width = drawPath.strokeWidth.dp.toPx(),
                                 cap = StrokeCap.Round,
                                 join = StrokeJoin.Round
-                            )
+                            ),
+                            blendMode = if (drawPath.isEraser) BlendMode.Clear else BlendMode.SrcOver
                         )
                     }
                 }
                 
                 // Text Layers
                 texts.forEach { textOverlay ->
-                    Box(
-                        modifier = Modifier
-                            .offset(x = textOverlay.position.x.dp / 2f, y = textOverlay.position.y.dp / 2f) // Rough scaling
-                            .pointerInput(textOverlay.id) {
-                                detectDragGestures { change, dragAmount ->
-                                    change.consume()
-                                    textOverlay.position += dragAmount
+                    key(textOverlay.id) {
+                        val isEditing = editingTextId == textOverlay.id
+                        val focusRequester = remember { FocusRequester() }
+                        
+                        DraggableOverlay(
+                            initialPosition = textOverlay.position,
+                            onPositionChanged = { newPos ->
+                                textOverlay.position = newPos
+                            }
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(4.dp)
+                                    .then(
+                                        if (isEditing) {
+                                            // Consume clicks when editing to prevent closing
+                                            Modifier.clickable(
+                                                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                                                indication = null
+                                            ) { /* Do nothing, just consume tap */ }
+                                        } else {
+                                            Modifier.clickable {
+                                                editingTextId = textOverlay.id
+                                            }
+                                        }
+                                    )
+                            ) {
+                                if (isEditing) {
+                                    // Dashed border in background
+                                    Canvas(modifier = Modifier.matchParentSize()) {
+                                        drawRect(
+                                            color = Color.White,
+                                            style = Stroke(
+                                                width = 1.dp.toPx(),
+                                                pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+                                            )
+                                        )
+                                    }
+
+                                    var textFieldValue by remember(textOverlay.id) { 
+                                        mutableStateOf(TextFieldValue(textOverlay.text, androidx.compose.ui.text.TextRange(textOverlay.text.length))) 
+                                    }
+                                    
+                                    // Box wrapping BasicTextField
+                                    Box(
+                                        modifier = Modifier.padding(8.dp)
+                                    ) {
+                                        BasicTextField(
+                                            value = textFieldValue,
+                                            onValueChange = { newValue ->
+                                                textFieldValue = newValue
+                                                textOverlay.text = newValue.text
+                                            },
+                                            textStyle = TextStyle(
+                                                color = textOverlay.color,
+                                                fontSize = textOverlay.fontSize.sp,
+                                                fontWeight = FontWeight.Bold
+                                            ),
+                                            cursorBrush = SolidColor(textOverlay.color),
+                                            modifier = Modifier
+                                                .focusRequester(focusRequester)
+                                                .widthIn(min = 40.dp, max = 300.dp),
+                                            decorationBox = { innerTextField ->
+                                                Box(modifier = Modifier.padding(end = 16.dp)) { 
+                                                    if (textFieldValue.text.isEmpty()) {
+                                                        Text("Nhập...", color = textOverlay.color.copy(alpha = 0.5f), fontSize = textOverlay.fontSize.sp)
+                                                    }
+                                                    innerTextField()
+                                                }
+                                            }
+                                        )
+                                    }
+
+                                    // Delete button at top right
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .offset(x = 6.dp, y = (-6).dp)
+                                            .size(24.dp)
+                                            .background(Color.Red, CircleShape)
+                                            .clickable {
+                                                texts.removeAll { it.id == textOverlay.id }
+                                                editingTextId = null
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Close, 
+                                            contentDescription = "Delete", 
+                                            tint = Color.White, 
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+
+                                    LaunchedEffect(textOverlay.id) {
+                                        focusRequester.requestFocus()
+                                    }
+                                } else {
+                                    Box(
+                                        modifier = Modifier.pointerInput(textOverlay.id) {
+                                            detectTransformGestures { _, _, zoom, _ ->
+                                                if (zoom != 1f) {
+                                                    val newSize = (textOverlay.fontSize * zoom).coerceIn(10f, 200f)
+                                                    textOverlay.fontSize = newSize
+                                                    val index = texts.indexOfFirst { it.id == textOverlay.id }
+                                                    if (index != -1) {
+                                                        texts[index] = textOverlay.copy(fontSize = newSize)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    ) {
+                                        Text(
+                                            text = textOverlay.text.ifEmpty { "Text" },
+                                            color = textOverlay.color,
+                                            fontSize = textOverlay.fontSize.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(8.dp)
+                                        )
+                                    }
                                 }
                             }
-                    ) {
-                        Text(
-                            text = textOverlay.text,
-                            color = textOverlay.color,
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        }
                     }
+                }
+              // Click outside to clear focus
+                if (editingTextId != null) {
+                    Box(modifier = Modifier.fillMaxSize().clickable(
+                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                        indication = null
+                    ) {
+                        editingTextId = null
+                    })
                 }
                 
                 // Sticker Layers
                 stickers.forEach { sticker ->
-                    Box(
-                        modifier = Modifier
-                            .offset(x = sticker.position.x.dp / 2f, y = sticker.position.y.dp / 2f)
-                            .pointerInput(sticker.id) {
-                                detectDragGestures { change, dragAmount ->
-                                    change.consume()
-                                    sticker.position += dragAmount
-                                }
+                    key(sticker.id) {
+                        DraggableOverlay(
+                            initialPosition = sticker.position,
+                            onPositionChanged = { newPos ->
+                                sticker.position = newPos
                             }
-                    ) {
-                        Text(text = sticker.emoji, fontSize = 40.sp)
+                        ) {
+                            Text(text = sticker.emoji, fontSize = 40.sp)
+                        }
                     }
                 }
             }
         }
     }
-    
-    if (showTextDialog) {
-        AlertDialog(
-            onDismissRequest = { showTextDialog = false },
-            title = { Text("Thêm văn bản") },
-            text = {
-                TextField(
-                    value = textInput,
-                    onValueChange = { textInput = it },
-                    placeholder = { Text("Nhập nội dung...") }
-                )
-            },
-            confirmButton = {
-                Button(onClick = {
-                    if (textInput.isNotEmpty()) {
-                        texts.add(TextOverlay(text = textInput, position = Offset(100f, 100f), color = selectedColor))
-                        textInput = ""
-                        showTextDialog = false
-                    }
-                }) { Text("Xong") }
-            }
-        )
-    }
+
+    // showTextDialog logic removed as it's now inline
 }
 
 @Composable
@@ -366,7 +560,31 @@ fun EditModeItem(icon: androidx.compose.ui.graphics.vector.ImageVector, isSelect
     }
 }
 
-enum class EditMode { DRAW, TEXT, STICKER }
+@Composable
+fun DraggableOverlay(
+    initialPosition: Offset,
+    onPositionChanged: (Offset) -> Unit,
+    content: @Composable () -> Unit
+) {
+    var position by remember { mutableStateOf(initialPosition) }
+    Box(
+        modifier = Modifier
+            .offset { IntOffset(position.x.roundToInt(), position.y.roundToInt()) }
+            .pointerInput(Unit) {
+                detectDragGestures { change, dragAmount ->
+                    change.consume()
+                    position += dragAmount
+                    onPositionChanged(position)
+                }
+            }
+    ) {
+        content()
+    }
+}
+
+enum class EditMode { DRAW, TEXT, STICKER, ERASE }
+
+enum class ActionType { DRAW, TEXT, STICKER }
 
 fun flattenImage(
     context: Context,
@@ -403,10 +621,12 @@ fun flattenImage(
             pathPaint.color = drawPath.color.toArgb()
             pathPaint.strokeWidth = drawPath.strokeWidth * scaleX 
             
-            val androidPath = android.graphics.Path()
-            // Here we would need to scale each point in the path. 
-            // For brevity, we use asAndroidPath() assuming screen coordinates, 
-            // but a proper implementation would iterate and scale points.
+            if (drawPath.isEraser) {
+                pathPaint.xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
+            } else {
+                pathPaint.xfermode = null
+            }
+
             val matrix = android.graphics.Matrix()
             matrix.postScale(scaleX, scaleY)
             val scaledPath = drawPath.path.asAndroidPath()
@@ -415,14 +635,37 @@ fun flattenImage(
         }
         
         // Draw Texts
-        val textPaint = Paint().apply {
-            textSize = 24f * scaleX * 2f // Scale font size
+        val textPaint = TextPaint().apply {
             isAntiAlias = true
             isFakeBoldText = true
         }
+        
+        // Calculate max width in pixels for the original bitmap scale
+        // In the UI, maxWidth is 300.dp. We need to convert this to pixels relative to the original bitmap.
+        // canvasSize is the screen size. originalBitmap is the target size.
+        val density = context.resources.displayMetrics.density
+        val maxWidthInPx = 300 * density * scaleX
+
         texts.forEach { textOverlay ->
             textPaint.color = textOverlay.color.toArgb()
-            canvas.drawText(textOverlay.text, textOverlay.position.x * scaleX, textOverlay.position.y * scaleY, textPaint)
+            textPaint.textSize = textOverlay.fontSize * scaleX * 1.5f // Adjusted scaling
+            
+            val staticLayout = StaticLayout.Builder.obtain(
+                textOverlay.text.ifEmpty { "" },
+                0,
+                textOverlay.text.length,
+                textPaint,
+                maxWidthInPx.toInt()
+            )
+            .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+            .setLineSpacing(0f, 1f)
+            .setIncludePad(false)
+            .build()
+
+            canvas.save()
+            canvas.translate(textOverlay.position.x * scaleX, textOverlay.position.y * scaleY)
+            staticLayout.draw(canvas)
+            canvas.restore()
         }
         
         // Draw Stickers
