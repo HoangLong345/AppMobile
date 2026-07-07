@@ -88,6 +88,7 @@ fun LoginScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .statusBarsPadding()
                 .padding(24.dp)
                 .navigationBarsPadding()
                 .imePadding(),
