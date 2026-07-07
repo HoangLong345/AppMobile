@@ -4,6 +4,7 @@ import android.app.Activity
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -17,13 +18,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.example.nhatky.R
 import com.example.nhatky.ui.components.AppBackground
 import com.example.nhatky.ui.components.NhatKyButton
 import com.example.nhatky.ui.components.NhatKyTextField
@@ -93,26 +94,26 @@ fun LoginScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // NK Logo Circle
+            // App Logo Circle
             Box(
                 modifier = Modifier
                     .size(100.dp)
                     .shadow(elevation = 12.dp, shape = CircleShape)
                     .clip(CircleShape)
-                    .background(
-                        brush = Brush.linearGradient(
-                            colors = listOf(SunsetGradientStart, SunsetGradientEnd)
-                        )
-                    ),
+                    .background(Color.White),
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = "NK", color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Bold)
+                Image(
+                    painter = painterResource(id = R.mipmap.ic_launcher_foreground),
+                    contentDescription = "App Logo",
+                    modifier = Modifier.fillMaxSize()
+                )
             }
 
             Spacer(modifier = Modifier.height(32.dp))
 
             Text(
-                text = "Chào mừng trở lại",
+                text = "Start Your Journal",
                 style = MaterialTheme.typography.headlineLarge,
                 fontWeight = FontWeight.ExtraBold,
                 color = MaterialTheme.colorScheme.primary
