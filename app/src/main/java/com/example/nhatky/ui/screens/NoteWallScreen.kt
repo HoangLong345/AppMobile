@@ -44,19 +44,26 @@ fun NoteWallScreen(
     WallBackground {
         Scaffold(
             topBar = {
-                TopAppBar(
-                    title = { Text(displayDate, fontWeight = FontWeight.Bold) },
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
-                )
+                Box(modifier = Modifier.statusBarsPadding()) {
+                    TopAppBar(
+                        title = { Text(displayDate, fontWeight = FontWeight.Bold) },
+                        navigationIcon = {
+                            IconButton(onClick = onBack) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                    )
+                }
             },
             containerColor = Color.Transparent
         ) { padding ->
-            Box(modifier = Modifier.padding(padding).fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .padding(padding)
+                    .fillMaxSize()
+                    .navigationBarsPadding()
+            ) {
                 when (val state = uiState) {
                     is DiaryUiState.SuccessGrouped -> {
                         val notes = state.groupedDiaries[dateKey]?.sortedBy { it.timestamp } ?: emptyList()
