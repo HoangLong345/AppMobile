@@ -13,12 +13,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -28,6 +26,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -51,6 +50,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import kotlin.math.roundToInt
@@ -75,13 +75,8 @@ data class TextOverlay(
     var text: String,
     var position: Offset,
     var color: Color,
-    var fontSize: Float = 24f
-)
-
-data class StickerOverlay(
-    val id: Long = System.nanoTime(),
-    val emoji: String,
-    var position: Offset
+    var fontSize: Float = 24f,
+    var rotation: Float = 0f
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -99,7 +94,6 @@ fun PhotoEditScreen(
     var currentPath by remember { mutableStateOf<DrawPath?>(null) }
     val paths = remember { mutableStateListOf<DrawPath>() }
     val texts = remember { mutableStateListOf<TextOverlay>() }
-    val stickers = remember { mutableStateListOf<StickerOverlay>() }
 
     var selectedColor by remember { mutableStateOf(Color.Red) }
     var strokeWidth by remember { mutableStateOf(10f) }
@@ -112,7 +106,6 @@ fun PhotoEditScreen(
     var editingTextId by remember { mutableStateOf<Long?>(null) }
 
     val colors = listOf(Color.Red, Color.Blue, Color.Green, Color.Yellow, Color.Black, Color.White)
-    val stickerList = listOf("❤️", "⭐", "🔥", "🌈", "🍀", "🌸", "🍦", "🎁", "🐶", "🐱")
 
     Scaffold(
         topBar = {
@@ -126,6 +119,8 @@ fun PhotoEditScreen(
                 actions = {
                     TextButton(
                         onClick = {
+                            if (canvasSize.width == 0 || canvasSize.height == 0) return@TextButton
+
                             isLoading = true
                             user?.uid?.let { uid ->
                                 val editedUri = flattenImage(
@@ -133,7 +128,6 @@ fun PhotoEditScreen(
                                     originalUri = imageUri,
                                     paths = paths,
                                     texts = texts,
-                                    stickers = stickers,
                                     canvasSize = canvasSize
                                 )
 
@@ -192,14 +186,7 @@ fun PhotoEditScreen(
                         EditModeItem(
                             icon = Icons.Default.Title,
                             isSelected = editMode == EditMode.TEXT,
-                            onClick = {
-                                editMode = EditMode.TEXT
-                            }
-                        )
-                        EditModeItem(
-                            icon = Icons.Default.Face,
-                            isSelected = editMode == EditMode.STICKER,
-                            onClick = { editMode = EditMode.STICKER }
+                            onClick = { editMode = EditMode.TEXT }
                         )
                         IconButton(onClick = {
                             if (actionHistory.isNotEmpty()) {
@@ -207,7 +194,6 @@ fun PhotoEditScreen(
                                 when (lastAction) {
                                     ActionType.DRAW -> if (paths.isNotEmpty()) paths.removeAt(paths.size - 1)
                                     ActionType.TEXT -> if (texts.isNotEmpty()) texts.removeAt(texts.size - 1)
-                                    ActionType.STICKER -> if (stickers.isNotEmpty()) stickers.removeAt(stickers.size - 1)
                                 }
                             }
                         }) {
@@ -250,25 +236,6 @@ fun PhotoEditScreen(
                                             )
                                     ) {}
                                 }
-                            }
-                        }
-                    }
-
-                    if (editMode == EditMode.STICKER) {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            stickerList.forEach { emoji ->
-                                Text(
-                                    text = emoji,
-                                    fontSize = 24.sp,
-                                    modifier = Modifier.clickable {
-                                        stickers.add(StickerOverlay(emoji = emoji, position = Offset(canvasSize.width / 2f, canvasSize.height / 2f)))
-                                        actionHistory.add(ActionType.STICKER)
-                                    }
-                                )
                             }
                         }
                     }
@@ -407,102 +374,98 @@ fun PhotoEditScreen(
                         val isEditing = editingTextId == textOverlay.id
                         val focusRequester = remember { FocusRequester() }
 
-                        DraggableOverlay(
+                        TransformableOverlay(
                             initialPosition = textOverlay.position,
-                            enabled = !isEditing,
                             onPositionChanged = { newPos ->
                                 textOverlay.position = newPos
+                            },
+                            onZoom = { zoomFactor ->
+                                val index = texts.indexOfFirst { it.id == textOverlay.id }
+                                if (index != -1) {
+                                    val currentSize = texts[index].fontSize
+                                    val newSize = (currentSize * zoomFactor).coerceIn(10f, 200f)
+                                    texts[index] = texts[index].copy(fontSize = newSize)
+                                }
+                            },
+                            onRotate = { rotationDelta ->
+                                val index = texts.indexOfFirst { it.id == textOverlay.id }
+                                if (index != -1) {
+                                    val currentRotation = texts[index].rotation
+                                    texts[index] = texts[index].copy(rotation = currentRotation + rotationDelta)
+                                }
                             }
                         ) {
-                            // Khung Box ngoài cùng cố định padding cho cả 2 chế độ vẽ
-                            Box(modifier = Modifier.padding(12.dp)) {
-                                // Khung chứa Text luôn có chung thuộc tính lồng để giữ chữ không bị dịch chuyển
-                                Box(modifier = Modifier.padding(top = 8.dp, end = 8.dp)) {
+                            Box(
+                                modifier = Modifier.graphicsLayer(rotationZ = textOverlay.rotation)
+                            ) {
+                                Box(modifier = Modifier.padding(10.dp)) {
                                     if (isEditing) {
                                         Canvas(modifier = Modifier.matchParentSize()) {
                                             drawRect(
                                                 color = Color.White,
                                                 style = Stroke(
-                                                    width = 2.dp.toPx(),
+                                                    width = 1.dp.toPx(),
                                                     pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
                                                 )
                                             )
                                         }
                                     }
 
-                                    Box(modifier = Modifier.padding(12.dp)) {
-                                        if (isEditing) {
-                                            var textFieldValue by remember(textOverlay.id) {
-                                                mutableStateOf(TextFieldValue(textOverlay.text, androidx.compose.ui.text.TextRange(textOverlay.text.length)))
-                                            }
+                                    Box(
+                                        modifier = Modifier.padding(2.dp)
+                                    ) {
+                                        var textFieldValue by remember(textOverlay.id) {
+                                            mutableStateOf(TextFieldValue(textOverlay.text, TextRange(textOverlay.text.length)))
+                                        }
 
+                                        Box(
+                                            modifier = if (!isEditing) Modifier.pointerInput(textOverlay.id) {
+                                                detectTapGestures { editingTextId = textOverlay.id }
+                                            } else Modifier
+                                        ) {
                                             BasicTextField(
                                                 value = textFieldValue,
                                                 onValueChange = { newValue ->
                                                     textFieldValue = newValue
                                                     textOverlay.text = newValue.text
                                                 },
+                                                enabled = isEditing,
                                                 textStyle = TextStyle(
                                                     color = textOverlay.color,
                                                     fontSize = textOverlay.fontSize.sp,
                                                     fontWeight = FontWeight.Bold
                                                 ),
                                                 cursorBrush = SolidColor(textOverlay.color),
-                                                modifier = Modifier
-                                                    .focusRequester(focusRequester)
-                                                    .widthIn(min = 40.dp, max = 300.dp),
+                                                modifier = (if (isEditing) Modifier.focusRequester(focusRequester) else Modifier)
+                                                    .width(IntrinsicSize.Min),
                                                 decorationBox = { innerTextField ->
-                                                    Box {
+                                                    Box(contentAlignment = Alignment.CenterStart) {
                                                         if (textFieldValue.text.isEmpty()) {
-                                                            Text("Nhập...", color = textOverlay.color.copy(alpha = 0.5f), fontSize = textOverlay.fontSize.sp)
+                                                            Text("T", color = textOverlay.color.copy(alpha = 0.5f), fontSize = textOverlay.fontSize.sp, fontWeight = FontWeight.Bold)
                                                         }
                                                         innerTextField()
                                                     }
                                                 }
                                             )
-                                        } else {
-                                            Box(
-                                                modifier = Modifier
-                                                    .pointerInput(textOverlay.id) {
-                                                        detectTransformGestures { _, _, zoom, _ ->
-                                                            if (zoom != 1f) {
-                                                                val newSize = (textOverlay.fontSize * zoom).coerceIn(10f, 200f)
-                                                                textOverlay.fontSize = newSize
-                                                                val index = texts.indexOfFirst { it.id == textOverlay.id }
-                                                                if (index != -1) {
-                                                                    texts[index] = textOverlay.copy(fontSize = newSize)
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                    .clickable {
-                                                        editingTextId = textOverlay.id
-                                                    }
-                                            ) {
-                                                Text(
-                                                    text = textOverlay.text.ifEmpty { "Text" },
-                                                    color = textOverlay.color,
-                                                    fontSize = textOverlay.fontSize.sp,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                            }
                                         }
                                     }
                                 }
 
-                                // Nút X xóa chữ chỉ xuất hiện khi đang chỉnh sửa
-                                if (isEditing) {
-                                    Box(
-                                        modifier = Modifier
-                                            .align(Alignment.TopEnd)
-                                            .size(24.dp)
-                                            .background(Color.Red, CircleShape)
-                                            .clickable {
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .size(24.dp)
+                                        .alpha(if (isEditing) 1f else 0f)
+                                        .background(if (isEditing) Color.Red else Color.Transparent, CircleShape)
+                                        .then(
+                                            if (isEditing) Modifier.clickable {
                                                 texts.removeAll { it.id == textOverlay.id }
                                                 editingTextId = null
-                                            },
-                                        contentAlignment = Alignment.Center
-                                    ) {
+                                            } else Modifier
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (isEditing) {
                                         Icon(
                                             Icons.Default.Close,
                                             contentDescription = "Delete",
@@ -510,28 +473,14 @@ fun PhotoEditScreen(
                                             modifier = Modifier.size(16.dp)
                                         )
                                     }
+                                }
 
-                                    LaunchedEffect(textOverlay.id, isEditing) {
-                                        if (isEditing) {
-                                            focusRequester.requestFocus()
-                                        }
+                                LaunchedEffect(textOverlay.id, isEditing) {
+                                    if (isEditing) {
+                                        focusRequester.requestFocus()
                                     }
                                 }
                             }
-                        }
-                    }
-                }
-
-                // Sticker Layers
-                stickers.forEach { sticker ->
-                    key(sticker.id) {
-                        DraggableOverlay(
-                            initialPosition = sticker.position,
-                            onPositionChanged = { newPos ->
-                                sticker.position = newPos
-                            }
-                        ) {
-                            Text(text = sticker.emoji, fontSize = 40.sp)
                         }
                     }
                 }
@@ -551,45 +500,54 @@ fun EditModeItem(icon: androidx.compose.ui.graphics.vector.ImageVector, isSelect
 }
 
 @Composable
-fun DraggableOverlay(
+fun TransformableOverlay(
     initialPosition: Offset,
-    enabled: Boolean = true,
     onPositionChanged: (Offset) -> Unit,
+    onZoom: (Float) -> Unit = {},
+    onRotate: (Float) -> Unit = {},
     content: @Composable () -> Unit
 ) {
     var position by remember { mutableStateOf(initialPosition) }
 
-    val modifier = if (enabled) {
-        Modifier.pointerInput(Unit) {
-            detectDragGestures { change, dragAmount ->
-                change.consume()
-                position += dragAmount
-                onPositionChanged(position)
-            }
-        }
-    } else Modifier
+    val currentOnZoom by rememberUpdatedState(onZoom)
+    val currentOnRotate by rememberUpdatedState(onRotate)
+    val currentOnPositionChanged by rememberUpdatedState(onPositionChanged)
 
     Box(
         modifier = Modifier
             .offset { IntOffset(position.x.roundToInt(), position.y.roundToInt()) }
-            .then(modifier)
+            .pointerInput(Unit) {
+                detectTransformGestures { _, pan, zoom, rotationDelta ->
+                    if (zoom != 1f) {
+                        currentOnZoom(zoom)
+                    }
+                    if (rotationDelta != 0f) {
+                        currentOnRotate(rotationDelta)
+                    }
+                    if (pan != Offset.Zero) {
+                        position += pan
+                        currentOnPositionChanged(position)
+                    }
+                }
+            }
     ) {
         content()
     }
 }
 
-enum class EditMode { DRAW, TEXT, STICKER, ERASE }
+enum class EditMode { DRAW, TEXT, ERASE }
 
-enum class ActionType { DRAW, TEXT, STICKER }
+enum class ActionType { DRAW, TEXT }
 
 fun flattenImage(
     context: Context,
     originalUri: Uri,
     paths: List<DrawPath>,
     texts: List<TextOverlay>,
-    stickers: List<StickerOverlay>,
     canvasSize: IntSize
 ): Uri? {
+    if (canvasSize.width == 0 || canvasSize.height == 0) return null
+
     return try {
         val inputStream = context.contentResolver.openInputStream(originalUri)
         val originalBitmap = BitmapFactory.decodeStream(inputStream)
@@ -632,18 +590,17 @@ fun flattenImage(
         }
 
         val density = context.resources.displayMetrics.density
-        val maxWidthInPx = 300 * density * scaleX
 
         texts.forEach { textOverlay ->
             textPaint.color = textOverlay.color.toArgb()
             textPaint.textSize = textOverlay.fontSize * scaleX * 1.5f
 
             val staticLayout = StaticLayout.Builder.obtain(
-                textOverlay.text.ifEmpty { "" },
+                textOverlay.text.ifEmpty { "T" },
                 0,
-                textOverlay.text.length,
+                textOverlay.text.ifEmpty { "T" }.length,
                 textPaint,
-                maxWidthInPx.toInt()
+                canvasSize.width * 2
             )
                 .setAlignment(Layout.Alignment.ALIGN_NORMAL)
                 .setLineSpacing(0f, 1f)
@@ -651,18 +608,19 @@ fun flattenImage(
                 .build()
 
             canvas.save()
-            // Bù trừ chuẩn xác độ lệch tổng cộng: ngang = 12 + 12 = 24.dp, dọc = 12 + 8 + 12 = 32.dp
-            canvas.translate((textOverlay.position.x + 24 * density) * scaleX, (textOverlay.position.y + 32 * density) * scaleY)
+
+            // Cập nhật vị trí lưu do đã thay đổi padding bên trong (10 + 2 = 12)
+            val pxDrawX = (textOverlay.position.x + 12 * density) * scaleX
+            val pxDrawY = (textOverlay.position.y + 12 * density) * scaleY
+
+            val pivotX = pxDrawX + (staticLayout.width / 2f)
+            val pivotY = pxDrawY + (staticLayout.height / 2f)
+
+            canvas.rotate(textOverlay.rotation, pivotX, pivotY)
+            canvas.translate(pxDrawX, pxDrawY)
+
             staticLayout.draw(canvas)
             canvas.restore()
-        }
-
-        val stickerPaint = Paint().apply {
-            textSize = 40f * scaleX * 2f
-            isAntiAlias = true
-        }
-        stickers.forEach { sticker ->
-            canvas.drawText(sticker.emoji, sticker.position.x * scaleX, sticker.position.y * scaleY, stickerPaint)
         }
 
         val outFile = File(context.cacheDir, "edited_${System.currentTimeMillis()}.jpg")
