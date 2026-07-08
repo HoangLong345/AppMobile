@@ -72,8 +72,7 @@ fun DiaryListScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.background)
-                    .statusBarsPadding()
-                    .padding(top = 16.dp, bottom = 8.dp)
+                    .padding(top = 16.dp)
             ) {
                 Row(
                     modifier = Modifier
@@ -124,13 +123,7 @@ fun DiaryListScreen(
             }
         }
     ) { padding ->
-        Box(
-            modifier = Modifier
-                .padding(padding)
-                .fillMaxSize()
-                .navigationBarsPadding()
-                .background(MaterialTheme.colorScheme.background)
-        ) {
+        Box(modifier = Modifier.padding(padding).fillMaxSize().background(MaterialTheme.colorScheme.background)) {
             when (val state = uiState) {
                 is DiaryUiState.Loading -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
