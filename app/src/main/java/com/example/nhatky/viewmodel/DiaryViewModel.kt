@@ -1,6 +1,7 @@
 package com.example.nhatky.viewmodel
 
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.nhatky.data.model.DiaryEntry
@@ -23,6 +24,7 @@ sealed class DiaryUiState {
 class DiaryViewModel @Inject constructor(
     private val repository: DiaryRepository,
 ) : ViewModel() {
+    private val TAG = "DiaryViewModel"
     private val _uiState = MutableStateFlow<DiaryUiState>(DiaryUiState.Loading)
     val uiState: StateFlow<DiaryUiState> = _uiState.asStateFlow()
 
@@ -67,13 +69,18 @@ class DiaryViewModel @Inject constructor(
     ) {
         viewModelScope.launch {
             try {
+                Log.d(TAG, "addOrUpdateDiary: Starting. imageUris count: ${imageUris.size}")
                 val newMediaUrls = imageUris.map { uri ->
                     val isVideo = uri.toString().lowercase().let { 
                         it.endsWith(".mp4") || it.contains("video") 
                     }
-                    repository.uploadMedia(uri, isVideo)
+                    Log.d(TAG, "addOrUpdateDiary: Uploading media: $uri, isVideo: $isVideo")
+                    val result = repository.uploadMedia(uri, isVideo)
+                    Log.d(TAG, "addOrUpdateDiary: Upload result: $result")
+                    result
                 }
-                val totalMediaUrls = existingMediaUrls + newMediaUrls
+                val totalMediaUrls = (existingMediaUrls + newMediaUrls).filter { it.isNotEmpty() }
+                Log.d(TAG, "addOrUpdateDiary: totalMediaUrls: $totalMediaUrls")
                 
                 val existingDiary = if (diaryId != null) repository.getEntryById(diaryId) else null
                 val diary = DiaryEntry(

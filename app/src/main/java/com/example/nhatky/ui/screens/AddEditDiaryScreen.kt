@@ -13,8 +13,12 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.nhatky.ui.utils.checkAndRequestDrivePermission
+import com.example.nhatky.ui.utils.rememberDrivePermissionLauncher
 import com.example.nhatky.viewmodel.AuthViewModel
 import com.example.nhatky.viewmodel.DiaryViewModel
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -25,10 +29,20 @@ fun AddEditDiaryScreen(
     onBack: () -> Unit,
 ) {
     val user by authViewModel.currentUser.collectAsState()
+    val context = LocalContext.current
     var title by remember { mutableStateOf("") }
     var content by remember { mutableStateOf("") }
     var mood by remember { mutableStateOf("Bình thường") }
     var isLoading by remember { mutableStateOf(false) }
+
+    val drivePermissionLauncher = rememberDrivePermissionLauncher { success ->
+        if (success) {
+            // Re-trigger save or just notify
+            Toast.makeText(context, "Đã cấp quyền Google Drive. Vui lòng nhấn Lưu lại.", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(context, "Cần quyền Google Drive để lưu ảnh/video.", Toast.LENGTH_LONG).show()
+        }
+    }
 
     LaunchedEffect(diaryId) {
         if (diaryId != null) {
@@ -64,20 +78,22 @@ fun AddEditDiaryScreen(
                 actions = {
                     TextButton(
                         onClick = {
-                            user?.uid?.let { uid ->
-                                isLoading = true
-                                diaryViewModel.addOrUpdateDiary(
-                                    diaryId = diaryId,
-                                    userId = uid,
-                                    title = title,
-                                    content = content,
-                                    mood = mood,
-                                    tags = emptyList(),
-                                    imageUris = emptyList(),
-                                    existingMediaUrls = emptyList()
-                                ) { success ->
-                                    isLoading = false
-                                    if (success) onBack()
+                            checkAndRequestDrivePermission(context, drivePermissionLauncher) {
+                                user?.uid?.let { uid ->
+                                    isLoading = true
+                                    diaryViewModel.addOrUpdateDiary(
+                                        diaryId = diaryId,
+                                        userId = uid,
+                                        title = title,
+                                        content = content,
+                                        mood = mood,
+                                        tags = emptyList(),
+                                        imageUris = emptyList(),
+                                        existingMediaUrls = emptyList()
+                                    ) { success ->
+                                        isLoading = false
+                                        if (success) onBack()
+                                    }
                                 }
                             }
                         },

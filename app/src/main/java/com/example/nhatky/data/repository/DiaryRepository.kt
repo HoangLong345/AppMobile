@@ -1,10 +1,11 @@
 package com.example.nhatky.data.repository
 
 import android.net.Uri
+import android.util.Log
 import com.example.nhatky.data.dao.DiaryDao
 import com.example.nhatky.data.model.DiaryEntry
+import com.example.nhatky.data.service.GoogleDriveService
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.tasks.await
 import java.util.UUID
@@ -15,8 +16,9 @@ import javax.inject.Singleton
 class DiaryRepository @Inject constructor(
     private val diaryDao: DiaryDao,
     private val firestore: FirebaseFirestore,
-    private val storage: FirebaseStorage
+    private val googleDriveService: GoogleDriveService
 ) {
+    private val TAG = "DiaryRepository"
     private val diaryCollection = firestore.collection("diaries")
 
     fun getDiaries(userId: String, query: String = ""): Flow<List<DiaryEntry>> {
@@ -72,13 +74,10 @@ class DiaryRepository @Inject constructor(
     }
 
     suspend fun uploadMedia(uri: Uri, isVideo: Boolean): String {
-        val extension = if (isVideo) "mp4" else "jpg"
-        val folder = if (isVideo) "videos" else "images"
-        val fileName = "$folder/${UUID.randomUUID()}.$extension"
-
-        val ref = storage.reference.child(fileName)
-        ref.putFile(uri).await()
-        return ref.downloadUrl.await().toString()
+        Log.d(TAG, "uploadMedia: Requesting GoogleDriveService for $uri")
+        val result = googleDriveService.uploadMedia(uri, isVideo) ?: ""
+        Log.d(TAG, "uploadMedia: GoogleDriveService returned $result")
+        return result
     }
 
     suspend fun syncWithCloud() {

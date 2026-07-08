@@ -3,15 +3,16 @@ package com.example.nhatky.di
 import android.content.Context
 import com.example.nhatky.data.dao.DiaryDao
 import com.example.nhatky.data.database.AppDatabase
+import com.example.nhatky.data.network.GoogleDriveMediaInterceptor
 import com.example.nhatky.data.repository.DiaryRepository
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.storage.FirebaseStorage
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import okhttp3.OkHttpClient
 import javax.inject.Singleton
 
 @Module
@@ -28,7 +29,11 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideFirebaseStorage(): FirebaseStorage = FirebaseStorage.getInstance()
+    fun provideOkHttpClient(interceptor: GoogleDriveMediaInterceptor): OkHttpClient {
+        return OkHttpClient.Builder()
+            .addInterceptor(interceptor)
+            .build()
+    }
 
     @Provides
     @Singleton
@@ -46,8 +51,8 @@ object AppModule {
     fun provideDiaryRepository(
         diaryDao: DiaryDao,
         firestore: FirebaseFirestore,
-        storage: FirebaseStorage
+        googleDriveService: com.example.nhatky.data.service.GoogleDriveService
     ): DiaryRepository {
-        return DiaryRepository(diaryDao, firestore, storage)
+        return DiaryRepository(diaryDao, firestore, googleDriveService)
     }
 }
