@@ -157,7 +157,11 @@ fun PhotoEditScreen(
                                             existingMediaUrls = emptyList(),
                                             onComplete = { success ->
                                                 isLoading = false
-                                                if (success) onSave()
+                                                if (success) {
+                                                    onSave()
+                                                } else {
+                                                    Toast.makeText(context, "Lỗi upload Video! Hãy kiểm tra kết nối mạng.", Toast.LENGTH_LONG).show()
+                                                }
                                             }
                                         )
                                     } else {
@@ -182,7 +186,11 @@ fun PhotoEditScreen(
                                                 existingMediaUrls = emptyList(),
                                                 onComplete = { success ->
                                                     isLoading = false
-                                                    if (success) onSave()
+                                                    if (success) {
+                                                        onSave()
+                                                    } else {
+                                                        Toast.makeText(context, "Lỗi upload Ảnh lên Drive! (Chưa bật API Drive hoặc sai mã SHA-1)", Toast.LENGTH_LONG).show()
+                                                    }
                                                 }
                                             )
                                         } else {

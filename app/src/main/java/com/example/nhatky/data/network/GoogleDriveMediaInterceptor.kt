@@ -15,14 +15,19 @@ class GoogleDriveMediaInterceptor @Inject constructor(
         val url = request.url.toString()
 
         if (url.startsWith("googledrive://")) {
-            val fileId = url.substring("googledrive://".length)
+            // Lấy ID kèm đuôi file
+            val fileIdWithExt = url.substring("googledrive://".length)
+
+            // Cắt bỏ phần đuôi (.mp4, .jpg) chỉ lấy đúng ID gốc của Google Drive để tải
+            val fileId = fileIdWithExt.substringBefore(".")
+
             val driveUrl = "https://www.googleapis.com/drive/v3/files/$fileId?alt=media"
-            
+
             val token = googleDriveService.getAccessToken()
             val newRequest = request.newBuilder()
                 .url(driveUrl)
                 .apply {
-                    if (token != null) {
+                    if (!token.isNullOrEmpty()) {
                         addHeader("Authorization", "Bearer $token")
                     }
                 }
