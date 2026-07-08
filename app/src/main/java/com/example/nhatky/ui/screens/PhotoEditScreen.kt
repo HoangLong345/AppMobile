@@ -59,8 +59,11 @@ import kotlin.math.roundToInt
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.nhatky.ui.utils.checkAndRequestDrivePermission
+import com.example.nhatky.ui.utils.rememberDrivePermissionLauncher
 import com.example.nhatky.viewmodel.AuthViewModel
 import com.example.nhatky.viewmodel.DiaryViewModel
+import android.widget.Toast
 import java.io.File
 import java.io.FileOutputStream
 
@@ -93,6 +96,14 @@ fun PhotoEditScreen(
 ) {
     val context = LocalContext.current
     val user by authViewModel.currentUser.collectAsState()
+
+    val drivePermissionLauncher = rememberDrivePermissionLauncher { success ->
+        if (success) {
+            Toast.makeText(context, "Đã cấp quyền Google Drive. Vui lòng nhấn Lưu lại.", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(context, "Cần quyền Google Drive để lưu ảnh/video.", Toast.LENGTH_LONG).show()
+        }
+    }
 
     // BIẾN QUAN TRỌNG: Kiểm tra xem Uri truyền vào là Ảnh hay Video
     val isVideo = remember(imageUri) {
@@ -130,43 +141,19 @@ fun PhotoEditScreen(
                         onClick = {
                             if (!isVideo && (canvasSize.width == 0 || canvasSize.height == 0)) return@TextButton
 
-                            isLoading = true
-                            user?.uid?.let { uid ->
-                                if (isVideo) {
-                                    // LƯU VIDEO: Không qua flattenImage, lưu trực tiếp URL
-                                    diaryViewModel.addOrUpdateDiary(
-                                        diaryId = null,
-                                        userId = uid,
-                                        title = "Kỷ niệm Video",
-                                        content = "Video kỷ niệm",
-                                        mood = "Bình thường",
-                                        tags = emptyList(),
-                                        imageUris = listOf(imageUri),
-                                        existingMediaUrls = emptyList(),
-                                        onComplete = { success ->
-                                            isLoading = false
-                                            if (success) onSave()
-                                        }
-                                    )
-                                } else {
-                                    // LƯU ẢNH: Trộn Canvas Vẽ/Chữ thành 1 file ảnh
-                                    val editedUri = flattenImage(
-                                        context = context,
-                                        originalUri = imageUri,
-                                        paths = paths,
-                                        texts = texts,
-                                        canvasSize = canvasSize
-                                    )
-
-                                    if (editedUri != null) {
+                            checkAndRequestDrivePermission(context, drivePermissionLauncher) {
+                                isLoading = true
+                                user?.uid?.let { uid ->
+                                    if (isVideo) {
+                                        // LƯU VIDEO: Không qua flattenImage, lưu trực tiếp URL
                                         diaryViewModel.addOrUpdateDiary(
                                             diaryId = null,
                                             userId = uid,
-                                            title = "Kỷ niệm ảnh",
-                                            content = "Kỷ niệm ảnh đã chỉnh sửa",
+                                            title = "Kỷ niệm Video",
+                                            content = "Video kỷ niệm",
                                             mood = "Bình thường",
                                             tags = emptyList(),
-                                            imageUris = listOf(editedUri),
+                                            imageUris = listOf(imageUri),
                                             existingMediaUrls = emptyList(),
                                             onComplete = { success ->
                                                 isLoading = false
@@ -174,7 +161,33 @@ fun PhotoEditScreen(
                                             }
                                         )
                                     } else {
-                                        isLoading = false
+                                        // LƯU ẢNH: Trộn Canvas Vẽ/Chữ thành 1 file ảnh
+                                        val editedUri = flattenImage(
+                                            context = context,
+                                            originalUri = imageUri,
+                                            paths = paths,
+                                            texts = texts,
+                                            canvasSize = canvasSize
+                                        )
+
+                                        if (editedUri != null) {
+                                            diaryViewModel.addOrUpdateDiary(
+                                                diaryId = null,
+                                                userId = uid,
+                                                title = "Kỷ niệm ảnh",
+                                                content = "Kỷ niệm ảnh đã chỉnh sửa",
+                                                mood = "Bình thường",
+                                                tags = emptyList(),
+                                                imageUris = listOf(editedUri),
+                                                existingMediaUrls = emptyList(),
+                                                onComplete = { success ->
+                                                    isLoading = false
+                                                    if (success) onSave()
+                                                }
+                                            )
+                                        } else {
+                                            isLoading = false
+                                        }
                                     }
                                 }
                             }

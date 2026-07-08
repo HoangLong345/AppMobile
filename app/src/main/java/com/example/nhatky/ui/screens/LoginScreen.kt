@@ -34,6 +34,8 @@ import com.example.nhatky.viewmodel.AuthViewModel
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
+import com.google.android.gms.common.api.Scope
+import com.google.api.services.drive.DriveScopes
 
 @Composable
 fun LoginScreen(
@@ -191,6 +193,7 @@ fun LoginScreen(
                         val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                             .requestIdToken(webClientId)
                             .requestEmail()
+                            .requestScopes(Scope(DriveScopes.DRIVE_FILE))
                             .build()
                         val googleSignInClient = GoogleSignIn.getClient(context, gso)
                         googleSignInClient.signOut().addOnCompleteListener {
