@@ -1,5 +1,6 @@
 package com.example.nhatky.viewmodel
 
+import android.content.Context
 import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.ViewModel
@@ -7,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.nhatky.data.model.DiaryEntry
 import com.example.nhatky.data.repository.DiaryRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -23,6 +25,7 @@ sealed class DiaryUiState {
 @HiltViewModel
 class DiaryViewModel @Inject constructor(
     private val repository: DiaryRepository,
+    @ApplicationContext private val context: Context // Tiêm Context để lấy ContentResolver
 ) : ViewModel() {
     private val TAG = "DiaryViewModel"
     private val _uiState = MutableStateFlow<DiaryUiState>(DiaryUiState.Loading)
@@ -44,14 +47,14 @@ class DiaryViewModel @Inject constructor(
             try {
                 repository.getDiaries(userId, _searchQuery.value)
                     .catch { e ->
-                        _uiState.value = DiaryUiState.Error(e.message ?: "Unknown error")
+                        _uiState.value = DiaryUiState.Error(e.message ?: "Lỗi không xác định")
                     }
                     .collect { diaries ->
                         val grouped = diaries.groupBy { dateFormatter.format(Date(it.timestamp)) }
                         _uiState.value = DiaryUiState.SuccessGrouped(grouped)
                     }
             } catch (e: Exception) {
-                _uiState.value = DiaryUiState.Error(e.message ?: "Unknown error")
+                _uiState.value = DiaryUiState.Error(e.message ?: "Lỗi không xác định")
             }
         }
     }
@@ -69,22 +72,42 @@ class DiaryViewModel @Inject constructor(
     ) {
         viewModelScope.launch {
             try {
-                Log.d(TAG, "addOrUpdateDiary: Starting. imageUris count: ${imageUris.size}")
-                val newMediaUrls = imageUris.map { uri ->
-                    val isVideo = uri.toString().lowercase().let { 
-                        it.endsWith(".mp4") || it.contains("video") 
+                Log.d(TAG, "addOrUpdateDiary: Bắt đầu. Số lượng file: ${imageUris.size}")
+
+                val newMediaUrls = mutableListOf<String>()
+                var isUploadFailed = false
+
+                for (uri in imageUris) {
+                    // Dùng ContentResolver để hỏi Hệ điều hành Android chính xác định dạng file
+                    val mimeType = context.contentResolver.getType(uri)
+                    val isVideo = mimeType?.startsWith("video") == true || uri.toString().lowercase().let {
+                        it.endsWith(".mp4") || it.contains("video")
                     }
-                    Log.d(TAG, "addOrUpdateDiary: Uploading media: $uri, isVideo: $isVideo")
+
+                    Log.d(TAG, "addOrUpdateDiary: Đang upload: $uri, isVideo: $isVideo")
+
                     val result = repository.uploadMedia(uri, isVideo)
-                    Log.d(TAG, "addOrUpdateDiary: Upload result: $result")
-                    result
+
+                    if (result.isNullOrEmpty()) {
+                        Log.e(TAG, "Upload thất bại cho uri: $uri")
+                        isUploadFailed = true
+                        break
+                    } else {
+                        Log.d(TAG, "Upload thành công: $result")
+                        newMediaUrls.add(result)
+                    }
                 }
-                val totalMediaUrls = (existingMediaUrls + newMediaUrls).filter { it.isNotEmpty() }
-                Log.d(TAG, "addOrUpdateDiary: totalMediaUrls: $totalMediaUrls")
-                
+
+                if (isUploadFailed) {
+                    onComplete(false)
+                    return@launch
+                }
+
+                val totalMediaUrls = existingMediaUrls + newMediaUrls
                 val existingDiary = if (diaryId != null) repository.getEntryById(diaryId) else null
+
                 val diary = DiaryEntry(
-                    id = diaryId ?: "",
+                    id = diaryId ?: UUID.randomUUID().toString(),
                     userId = userId,
                     title = title,
                     content = content,
@@ -93,35 +116,28 @@ class DiaryViewModel @Inject constructor(
                     mediaUrls = totalMediaUrls,
                     timestamp = existingDiary?.timestamp ?: System.currentTimeMillis()
                 )
-                
+
                 if (diaryId == null) {
                     repository.addDiary(diary)
                 } else {
                     repository.updateDiary(diary)
                 }
                 onComplete(true)
+
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.e(TAG, "Lỗi Catch trong addOrUpdateDiary: ${e.message}", e)
                 onComplete(false)
             }
         }
     }
 
     suspend fun getDiaryById(diaryId: String): DiaryEntry? {
-        return try {
-            repository.getEntryById(diaryId)
-        } catch (_: Exception) {
-            null
-        }
+        return try { repository.getEntryById(diaryId) } catch (_: Exception) { null }
     }
 
     fun deleteDiary(diaryId: String) {
         viewModelScope.launch {
-            try {
-                repository.deleteDiary(diaryId)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+            try { repository.deleteDiary(diaryId) } catch (e: Exception) { e.printStackTrace() }
         }
     }
 }

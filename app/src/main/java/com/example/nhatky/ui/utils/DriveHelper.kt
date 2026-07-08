@@ -1,14 +1,13 @@
 package com.example.nhatky.ui.utils
 
 import android.content.Context
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.Composable
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.Scope
 import com.google.api.services.drive.DriveScopes
-import androidx.compose.runtime.Composable
 
 @Composable
 fun rememberDrivePermissionLauncher(onResult: (Boolean) -> Unit) =
@@ -23,7 +22,7 @@ fun checkAndRequestDrivePermission(
 ) {
     val account = GoogleSignIn.getLastSignedInAccount(context)
     val driveScope = Scope(DriveScopes.DRIVE_FILE)
-    
+
     if (account != null && GoogleSignIn.hasPermissions(account, driveScope)) {
         onHasPermission()
     } else {
