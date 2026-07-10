@@ -21,12 +21,19 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
+import com.google.api.services.drive.DriveScopes
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.util.Collections
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -36,47 +43,67 @@ fun VideoPlayerDialog(
 ) {
     val context = LocalContext.current
     var isLoading by remember { mutableStateOf(true) }
+    var exoPlayer by remember { mutableStateOf<ExoPlayer?>(null) }
 
-    val exoPlayer = remember {
-        // Tối ưu bộ đệm chống giật lag
-        val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(
-                32000, 64000, 2500, 5000
-            ).build()
-
-        // BẬT TÍNH NĂNG TUA (SEEK) CHO MỌI ĐỊNH DẠNG VIDEO
-        // Giải quyết lỗi thanh thời gian bị đóng băng không kéo thả được
-        val extractorsFactory = DefaultExtractorsFactory()
-            .setConstantBitrateSeekingEnabled(true)
-        val mediaSourceFactory = DefaultMediaSourceFactory(context, extractorsFactory)
-
-        ExoPlayer.Builder(context)
-            .setMediaSourceFactory(mediaSourceFactory)
-            .setLoadControl(loadControl)
-            .build().apply {
-                setMediaItem(MediaItem.fromUri(videoUrl))
-                videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT
-                prepare()
-                playWhenReady = true
-                addListener(object : Player.Listener {
-                    override fun onPlaybackStateChanged(playbackState: Int) {
-                        isLoading = playbackState == Player.STATE_BUFFERING
-                    }
-                })
+    LaunchedEffect(videoUrl) {
+        withContext(Dispatchers.IO) {
+            // 1. Lấy Token đăng nhập của người dùng dưới chế độ nền (IO Thread)
+            var token: String? = null
+            try {
+                val account = GoogleSignIn.getLastSignedInAccount(context)
+                if (account != null) {
+                    val credential = GoogleAccountCredential.usingOAuth2(
+                        context, Collections.singleton(DriveScopes.DRIVE_FILE)
+                    )
+                    credential.selectedAccount = account.account
+                    token = credential.token
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
+
+            // 2. Chuyển lên Main Thread để cấu hình Trình phát Video
+            withContext(Dispatchers.Main) {
+                val loadControl = DefaultLoadControl.Builder()
+                    .setBufferDurationsMs(32000, 64000, 2500, 5000).build()
+                val extractorsFactory = DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true)
+
+                // 3. NẠP CHÌA KHÓA BẢO MẬT VÀO NGUỒN TẢI VIDEO
+                val dataSourceFactory = DefaultHttpDataSource.Factory().apply {
+                    if (!token.isNullOrEmpty()) {
+                        setDefaultRequestProperties(mapOf("Authorization" to "Bearer $token"))
+                    }
+                }
+
+                val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory, extractorsFactory)
+
+                exoPlayer = ExoPlayer.Builder(context)
+                    .setMediaSourceFactory(mediaSourceFactory)
+                    .setLoadControl(loadControl)
+                    .build().apply {
+                        setMediaItem(MediaItem.fromUri(videoUrl))
+                        videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT
+                        prepare()
+                        playWhenReady = true
+                        addListener(object : Player.Listener {
+                            override fun onPlaybackStateChanged(playbackState: Int) {
+                                isLoading = playbackState == Player.STATE_BUFFERING
+                            }
+                        })
+                    }
+            }
+        }
     }
 
-    DisposableEffect(Unit) {
+    DisposableEffect(exoPlayer) {
         onDispose {
-            exoPlayer.release()
+            exoPlayer?.release()
         }
     }
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false // Hiển thị full màn hình
-        )
+        properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Box(
             modifier = Modifier
@@ -84,28 +111,27 @@ fun VideoPlayerDialog(
                 .background(Color.Black),
             contentAlignment = Alignment.Center
         ) {
-            AndroidView(
-                factory = { ctx ->
-                    PlayerView(ctx).apply {
-                        player = exoPlayer
-                        useController = true // Đảm bảo luôn kích hoạt bộ điều khiển UI
-                        // Đảm bảo video giữ đúng tỷ lệ, không bị cắt xén
-                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                        layoutParams = FrameLayout.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                            ViewGroup.LayoutParams.MATCH_PARENT
-                        )
-                    }
-                },
-                modifier = Modifier.fillMaxSize() // Không dùng padding ở đây để PlayerView nhận full thao tác vuốt
-            )
+            if (exoPlayer != null) {
+                AndroidView(
+                    factory = { ctx ->
+                        PlayerView(ctx).apply {
+                            player = exoPlayer
+                            useController = true
+                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                            layoutParams = FrameLayout.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.MATCH_PARENT
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
 
-            // Hiển thị vòng xoay loading khi video đang load bộ đệm
             if (isLoading) {
                 CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
             }
 
-            // Nút đóng Dialog (X)
             IconButton(
                 onClick = onDismiss,
                 modifier = Modifier
