@@ -16,16 +16,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.nhatky.ui.components.NhatKyTopBar
 import com.example.nhatky.viewmodel.AuthViewModel
+import com.example.nhatky.viewmodel.SettingsViewModel
 
 @Composable
 fun SettingsScreen(
     authViewModel: AuthViewModel,
+    settingsViewModel: SettingsViewModel,
     onLogout: () -> Unit,
     onNavigateBack: () -> Unit
 ) {
-    var isDarkMode by remember { mutableStateOf(false) }
+    val isDarkMode by settingsViewModel.isDarkMode.collectAsState()
     var isPinEnabled by remember { mutableStateOf(false) }
-    val userEmail = authViewModel.currentUser.value?.email ?: "Người dùng"
+    val userEmail = authViewModel.currentUser.collectAsState().value?.email ?: "Người dùng"
 
     Scaffold(
         topBar = {
@@ -60,10 +62,10 @@ fun SettingsScreen(
             // Appearance Section
             SettingsSectionTitle(title = "Giao diện")
             SettingsSwitchItem(
-                icon = Icons.Default.Build, // Temporarily using Build as a placeholder
+                icon = Icons.Default.SettingsBrightness, 
                 title = "Chế độ tối",
                 checked = isDarkMode,
-                onCheckedChange = { isDarkMode = it }
+                onCheckedChange = { settingsViewModel.toggleDarkMode(it) }
             )
             
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
