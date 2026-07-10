@@ -26,12 +26,12 @@ import java.util.*
 fun NoteWallScreen(
     dateKey: String,
     diaryViewModel: DiaryViewModel,
-    onEditNote: (String) -> Unit,
+    onEditNote: (DiaryEntry) -> Unit, // SỬA Ở ĐÂY: Trả về nguyên DiaryEntry thay vì chỉ String ID
     onBack: () -> Unit
 ) {
     val uiState by diaryViewModel.uiState.collectAsState()
     var selectedNote by remember { mutableStateOf<DiaryEntry?>(null) }
-    
+
     val displayDate = remember(dateKey) {
         try {
             val inputFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
@@ -67,7 +67,7 @@ fun NoteWallScreen(
                 when (val state = uiState) {
                     is DiaryUiState.SuccessGrouped -> {
                         val notes = state.groupedDiaries[dateKey]?.sortedBy { it.timestamp } ?: emptyList()
-                        
+
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -83,7 +83,7 @@ fun NoteWallScreen(
                                 }
                                 val offsetX = randomValues.first
                                 val offsetY = index * 140 + randomValues.second
-                                
+
                                 Box(
                                     modifier = Modifier
                                         .offset(x = offsetX.dp, y = offsetY.dp)
@@ -110,8 +110,8 @@ fun NoteWallScreen(
         NoteDetailDialog(
             diary = note,
             onDismiss = { selectedNote = null },
-            onEdit = { onEditNote(note.id) },
-            onDelete = { 
+            onEdit = { onEditNote(note) }, // SỬA Ở ĐÂY: Truyền nguyên biến `note`
+            onDelete = {
                 diaryViewModel.deleteDiary(note.id)
                 selectedNote = null
             }

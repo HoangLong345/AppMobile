@@ -63,7 +63,7 @@ fun AppNavigation() {
                 }
             )
         }
-        
+
         composable("register") {
             RegisterScreen(
                 viewModel = authViewModel,
@@ -77,7 +77,7 @@ fun AppNavigation() {
                 }
             )
         }
-        
+
         composable("diary_list") {
             DiaryListScreen(
                 authViewModel = authViewModel,
@@ -114,6 +114,7 @@ fun AppNavigation() {
             )
         }
 
+        // SỬA Ở ĐÂY: Xử lý logic chuyển màn hình khi bấm nút Edit
         composable(
             route = "note_wall/{dateKey}",
             arguments = listOf(navArgument("dateKey") { type = NavType.StringType })
@@ -122,13 +123,20 @@ fun AppNavigation() {
             NoteWallScreen(
                 dateKey = dateKey,
                 diaryViewModel = diaryViewModel,
-                onEditNote = { noteId ->
-                    navController.navigate("edit_diary/$noteId")
+                onEditNote = { note ->
+                    // Kiểm tra nếu nhật ký có ảnh -> Chuyển sang chỉnh sửa ảnh
+                    if (note.mediaUrls.isNotEmpty()) {
+                        val encodedUri = Uri.encode(note.mediaUrls.first())
+                        navController.navigate("photo_edit_screen/$encodedUri?diaryId=${note.id}")
+                    } else {
+                        // Nếu là nhật ký chữ -> Chuyển sang AddEditDiaryScreen
+                        navController.navigate("edit_diary/${note.id}")
+                    }
                 },
                 onBack = { navController.popBackStack() }
             )
         }
-        
+
         composable("add_diary") {
             AddEditDiaryScreen(
                 diaryId = null,
@@ -139,7 +147,7 @@ fun AppNavigation() {
                 }
             )
         }
-        
+
         composable(
             route = "edit_diary/{diaryId}",
             arguments = listOf(navArgument("diaryId") { type = NavType.StringType })
@@ -167,14 +175,20 @@ fun AppNavigation() {
             )
         }
 
+        // SỬA Ở ĐÂY: Bổ sung Optional param diaryId cho màn hình sửa ảnh
         composable(
-            route = "photo_edit_screen/{imageUri}",
-            arguments = listOf(navArgument("imageUri") { type = NavType.StringType })
+            route = "photo_edit_screen/{imageUri}?diaryId={diaryId}",
+            arguments = listOf(
+                navArgument("imageUri") { type = NavType.StringType },
+                navArgument("diaryId") { type = NavType.StringType; nullable = true }
+            )
         ) { backStackEntry ->
             val imageUriStr = backStackEntry.arguments?.getString("imageUri") ?: ""
+            val diaryId = backStackEntry.arguments?.getString("diaryId")
             val imageUri = Uri.parse(Uri.decode(imageUriStr))
             PhotoEditScreen(
                 imageUri = imageUri,
+                diaryId = diaryId,
                 authViewModel = authViewModel,
                 diaryViewModel = diaryViewModel,
                 onSave = {

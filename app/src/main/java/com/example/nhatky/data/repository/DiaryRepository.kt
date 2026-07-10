@@ -102,4 +102,21 @@ class DiaryRepository @Inject constructor(
             }
         }
     }
+
+    // TÍNH NĂNG MỚI: Phục hồi dữ liệu từ Firebase về điện thoại
+    suspend fun fetchFromCloudToLocal(userId: String) {
+        try {
+            // Tải dữ liệu của người dùng từ Cloud
+            val snapshot = diaryCollection.whereEqualTo("userId", userId).get().await()
+            val cloudEntries = snapshot.documents.mapNotNull { it.toObject(DiaryEntry::class.java) }
+
+            // Lưu đè/phục hồi tất cả vào Database cục bộ
+            cloudEntries.forEach { entry ->
+                diaryDao.insertEntry(entry.copy(isSynced = true))
+            }
+            Log.d(TAG, "Đã phục hồi thành công ${cloudEntries.size} bài nhật ký từ Cloud về máy.")
+        } catch (e: Exception) {
+            Log.e(TAG, "Lỗi khi phục hồi dữ liệu từ Cloud: ${e.message}", e)
+        }
+    }
 }
