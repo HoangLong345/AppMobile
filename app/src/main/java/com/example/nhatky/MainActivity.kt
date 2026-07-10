@@ -25,6 +25,7 @@ import com.example.nhatky.ui.screens.SettingsScreen
 import com.example.nhatky.ui.theme.Theme
 import com.example.nhatky.viewmodel.AuthViewModel
 import com.example.nhatky.viewmodel.DiaryViewModel
+import com.example.nhatky.viewmodel.SettingsViewModel
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
@@ -33,9 +34,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            Theme {
-                AppNavigation()
-            }
+            AppNavigation()
         }
     }
 }
@@ -45,11 +44,15 @@ fun AppNavigation() {
     val navController = rememberNavController()
     val authViewModel: AuthViewModel = hiltViewModel()
     val diaryViewModel: DiaryViewModel = hiltViewModel()
+    val settingsViewModel: SettingsViewModel = hiltViewModel()
+
     val user by authViewModel.currentUser.collectAsState()
+    val isDarkMode by settingsViewModel.isDarkMode.collectAsState()
 
     val startDestination = if (user == null) "login" else "diary_list"
 
-    NavHost(navController = navController, startDestination = startDestination) {
+    Theme(darkTheme = isDarkMode) {
+        NavHost(navController = navController, startDestination = startDestination) {
         composable("login") {
             LoginScreen(
                 viewModel = authViewModel,
@@ -103,6 +106,7 @@ fun AppNavigation() {
         composable("settings") {
             SettingsScreen(
                 authViewModel = authViewModel,
+                settingsViewModel = settingsViewModel,
                 onLogout = {
                     navController.navigate("login") {
                         popUpTo(0) { inclusive = true }
@@ -198,6 +202,7 @@ fun AppNavigation() {
                 },
                 onBack = { navController.popBackStack() }
             )
+        }
         }
     }
 }

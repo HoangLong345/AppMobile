@@ -4,6 +4,7 @@ import android.content.Context
 import com.example.nhatky.data.dao.DiaryDao
 import com.example.nhatky.data.database.AppDatabase
 import com.example.nhatky.data.network.GoogleDriveMediaInterceptor
+import com.example.nhatky.data.preferences.SettingsManager
 import com.example.nhatky.data.repository.DiaryRepository
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
@@ -44,6 +45,12 @@ object AppModule {
     @Provides
     fun provideDiaryDao(database: AppDatabase): DiaryDao {
         return database.diaryDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideSettingsManager(@ApplicationContext context: Context): SettingsManager {
+        return SettingsManager(context)
     }
 
     @Provides
