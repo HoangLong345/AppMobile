@@ -1,8 +1,13 @@
 package com.example.nhatky.ui.components
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BrokenImage
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -14,11 +19,13 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
+import coil.request.ImageRequest
 import com.example.nhatky.data.model.DiaryEntry
 import java.text.SimpleDateFormat
 import java.util.*
@@ -60,14 +67,45 @@ fun StickyNote(
                 modifier = Modifier.width(if (scaledDown) 140.dp else 300.dp)
             ) {
                 Column(modifier = Modifier.padding(if (scaledDown) 6.dp else 12.dp)) {
-                    AsyncImage(
-                        model = diary.mediaUrls.first(),
+
+                    val realUrl = getRealDriveUrl(diary.mediaUrls.first())
+
+                    SubcomposeAsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(realUrl)
+                            .crossfade(true)
+                            .build(),
                         contentDescription = null,
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(1f),
-                        contentScale = ContentScale.Crop
+                        contentScale = ContentScale.Crop,
+                        loading = {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(if (scaledDown) 16.dp else 32.dp),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    strokeWidth = 2.dp
+                                )
+                            }
+                        },
+                        error = {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color.LightGray.copy(alpha = 0.3f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.BrokenImage,
+                                    contentDescription = "Lỗi",
+                                    tint = Color.Gray,
+                                    modifier = Modifier.size(if (scaledDown) 24.dp else 48.dp)
+                                )
+                            }
+                        }
                     )
+
                     Spacer(modifier = Modifier.height(if (scaledDown) 4.dp else 12.dp))
                     Text(
                         text = timeFormat.format(Date(diary.timestamp)),
@@ -95,7 +133,7 @@ fun StickyNote(
                             modifier = Modifier.padding(bottom = 4.dp)
                         )
                     }
-                    
+
                     if (diary.title.isNotEmpty()) {
                         Text(
                             text = diary.title,
@@ -106,7 +144,7 @@ fun StickyNote(
                         )
                         Spacer(modifier = Modifier.height(if (scaledDown) 4.dp else 8.dp))
                     }
-                    
+
                     Text(
                         text = diary.content,
                         style = MaterialTheme.typography.bodySmall.copy(
@@ -143,4 +181,12 @@ fun rememberNoteColor(id: String): Color {
         Color(0xFFDCFCE7)  // Green
     )
     return remember(id) { colors[Math.abs(id.hashCode()) % colors.size] }
+}
+
+private fun getRealDriveUrl(url: String): String {
+    if (url.startsWith("googledrive://")) {
+        val id = url.substringAfter("googledrive://").substringBeforeLast(".")
+        return "https://www.googleapis.com/drive/v3/files/$id?alt=media"
+    }
+    return url
 }

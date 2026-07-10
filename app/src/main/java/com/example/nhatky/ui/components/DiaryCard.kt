@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BrokenImage
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayCircleOutline
 import androidx.compose.material3.*
@@ -20,9 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
-import coil.compose.AsyncImagePainter
-import coil.request.CachePolicy
+import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
 import com.example.nhatky.data.model.DiaryEntry
 import java.text.SimpleDateFormat
@@ -67,7 +66,7 @@ fun DiaryCard(
                         }
                 ) {
                     if (isVideo) {
-                        // Khung hiển thị Video
+                        // Khung hiển thị Video Placeholder
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -82,21 +81,43 @@ fun DiaryCard(
                             )
                         }
                     } else {
-                        // CẢI TIẾN: Ép Coil tải trực tiếp từ mạng, cấm xài Cache
-                        AsyncImage(
+                        // Sử dụng SubcomposeAsyncImage để xử lý các trạng thái Loading / Error trực quan
+                        SubcomposeAsyncImage(
                             model = ImageRequest.Builder(context)
                                 .data(realUrl)
                                 .crossfade(true)
-                                .memoryCachePolicy(CachePolicy.DISABLED) // Bỏ qua bộ đệm RAM
-                                .diskCachePolicy(CachePolicy.DISABLED)   // Bỏ qua bộ đệm Ổ cứng
                                 .build(),
-                            contentDescription = null,
+                            contentDescription = "Diary Image",
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop,
-                            onState = { state ->
-                                // BẮT LỖI TẠI TRẬN NẾU ẢNH TRẮNG
-                                if (state is AsyncImagePainter.State.Error) {
-                                    Log.e("CoilError", "Không tải được ảnh: ${state.result.throwable.message}")
+                            loading = {
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(36.dp),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        strokeWidth = 3.dp
+                                    )
+                                }
+                            },
+                            error = {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(Color.LightGray.copy(alpha = 0.3f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Icon(
+                                            imageVector = Icons.Default.BrokenImage,
+                                            contentDescription = "Error Loading",
+                                            tint = Color.Gray,
+                                            modifier = Modifier.size(48.dp)
+                                        )
+                                        Text("Lỗi tải ảnh", fontSize = 12.sp, color = Color.Gray)
+                                    }
                                 }
                             }
                         )
@@ -104,6 +125,7 @@ fun DiaryCard(
                 }
             }
 
+            // Phần Text UI giữ nguyên hoàn toàn
             Column(modifier = Modifier.padding(20.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -179,7 +201,8 @@ fun DiaryCard(
 
 private fun getRealDriveUrl(url: String): String {
     if (url.startsWith("googledrive://")) {
-        val id = url.substringAfter("googledrive://").substringBefore(".")
+        // Cắt bỏ "googledrive://" và phần mở rộng (ví dụ .jpg / .mp4) để lấy đúng ID Google Drive
+        val id = url.substringAfter("googledrive://").substringBeforeLast(".")
         return "https://www.googleapis.com/drive/v3/files/$id?alt=media"
     }
     return url

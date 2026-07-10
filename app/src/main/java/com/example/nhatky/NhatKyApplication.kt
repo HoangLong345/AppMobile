@@ -12,16 +12,17 @@ import javax.inject.Inject
 
 @HiltAndroidApp
 class NhatKyApplication : Application(), ImageLoaderFactory {
+
     @Inject
     lateinit var googleDriveMediaInterceptor: GoogleDriveMediaInterceptor
 
     override fun newImageLoader(): ImageLoader {
-        val okHttpClient = OkHttpClient.Builder()
-            .addInterceptor(googleDriveMediaInterceptor)
-            .build()
-
         return ImageLoader.Builder(this)
-            .okHttpClient(okHttpClient)
+            .okHttpClient {
+                OkHttpClient.Builder()
+                    .addInterceptor(googleDriveMediaInterceptor)
+                    .build()
+            }
             .memoryCache {
                 MemoryCache.Builder(this)
                     .maxSizePercent(0.25)
@@ -30,11 +31,10 @@ class NhatKyApplication : Application(), ImageLoaderFactory {
             .diskCache {
                 DiskCache.Builder()
                     .directory(this.cacheDir.resolve("image_cache"))
-                    .maxSizePercent(0.02)
+                    .maxSizePercent(0.05)
                     .build()
             }
             .crossfade(true)
-            .respectCacheHeaders(false)
             .build()
     }
 }
