@@ -33,43 +33,54 @@ class DiaryRepository @Inject constructor(
         return diaryDao.getEntryById(id)
     }
 
-    suspend fun addDiary(diary: DiaryEntry) {
-        val id = if (diary.id.isEmpty()) UUID.randomUUID().toString() else diary.id
-        val newDiary = diary.copy(id = id)
-        
-        // Save locally first
-        diaryDao.insertEntry(newDiary)
-        
-        // Try to sync with Firestore
-        try {
+    // Trả về Result để ViewModel bắt được lỗi
+    suspend fun addDiary(diary: DiaryEntry): Result<Unit> {
+        return try {
+            val id = if (diary.id.isEmpty()) UUID.randomUUID().toString() else diary.id
+            val newDiary = diary.copy(id = id)
+
+            // Save locally first
+            diaryDao.insertEntry(newDiary)
+
+            // Try to sync with Firestore
             diaryCollection.document(id).set(newDiary.copy(isSynced = true)).await()
             diaryDao.updateEntry(newDiary.copy(isSynced = true))
+
+            Result.success(Unit)
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Lỗi addDiary: ${e.message}", e)
+            Result.failure(e)
         }
     }
 
-    suspend fun updateDiary(diary: DiaryEntry) {
-        diaryDao.updateEntry(diary.copy(isSynced = false))
-        
-        try {
+    // Trả về Result
+    suspend fun updateDiary(diary: DiaryEntry): Result<Unit> {
+        return try {
+            diaryDao.updateEntry(diary.copy(isSynced = false))
+
             diaryCollection.document(diary.id).set(diary.copy(isSynced = true)).await()
             diaryDao.updateEntry(diary.copy(isSynced = true))
+
+            Result.success(Unit)
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Lỗi updateDiary: ${e.message}", e)
+            Result.failure(e)
         }
     }
 
-    suspend fun deleteDiary(diaryId: String) {
-        val entry = diaryDao.getEntryById(diaryId)
-        if (entry != null) {
-            diaryDao.deleteEntry(entry)
-        }
-        
-        try {
+    // Trả về Result
+    suspend fun deleteDiary(diaryId: String): Result<Unit> {
+        return try {
+            val entry = diaryDao.getEntryById(diaryId)
+            if (entry != null) {
+                diaryDao.deleteEntry(entry)
+            }
+
             diaryCollection.document(diaryId).delete().await()
+            Result.success(Unit)
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Lỗi deleteDiary: ${e.message}", e)
+            Result.failure(e)
         }
     }
 
@@ -87,7 +98,7 @@ class DiaryRepository @Inject constructor(
                 diaryCollection.document(entry.id).set(entry.copy(isSynced = true)).await()
                 diaryDao.updateEntry(entry.copy(isSynced = true))
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.e(TAG, "Lỗi syncWithCloud cho mục ${entry.id}: ${e.message}")
             }
         }
     }
