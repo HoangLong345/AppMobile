@@ -1,5 +1,8 @@
 package com.example.nhatky.ui.screens
 
+import android.net.Uri
+import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -8,22 +11,25 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.example.nhatky.ui.utils.checkAndRequestDrivePermission
 import com.example.nhatky.ui.utils.rememberDrivePermissionLauncher
 import com.example.nhatky.viewmodel.AuthViewModel
 import com.example.nhatky.viewmodel.DiaryViewModel
-import android.widget.Toast
-import androidx.compose.ui.platform.LocalContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddEditDiaryScreen(
     diaryId: String?,
+    imageUriString: String? = null, // Đã thêm: Nhận URI ảnh từ navigation
     authViewModel: AuthViewModel,
     diaryViewModel: DiaryViewModel,
     onBack: () -> Unit,
@@ -35,12 +41,25 @@ fun AddEditDiaryScreen(
     var mood by remember { mutableStateOf("Bình thường") }
     var isLoading by remember { mutableStateOf(false) }
 
+    // Đã thêm: Quản lý danh sách URI ảnh mới được chọn và URL ảnh cũ trên Cloud
+    val selectedImageUris = remember { mutableStateListOf<Uri>() }
+    var existingMediaUrls by remember { mutableStateOf(listOf<String>()) }
+
     val drivePermissionLauncher = rememberDrivePermissionLauncher { success ->
         if (success) {
-            // Re-trigger save or just notify
             Toast.makeText(context, "Đã cấp quyền Google Drive. Vui lòng nhấn Lưu lại.", Toast.LENGTH_SHORT).show()
         } else {
             Toast.makeText(context, "Cần quyền Google Drive để lưu ảnh/video.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    // Đã thêm: Lấy URI ảnh từ màn hình trước và đưa vào danh sách để hiển thị/lưu
+    LaunchedEffect(imageUriString) {
+        if (!imageUriString.isNullOrEmpty()) {
+            val decodedUri = Uri.parse(Uri.decode(imageUriString))
+            if (!selectedImageUris.contains(decodedUri)) {
+                selectedImageUris.add(decodedUri)
+            }
         }
     }
 
@@ -52,6 +71,7 @@ fun AddEditDiaryScreen(
                 title = diary.title
                 content = diary.content
                 mood = diary.mood
+                existingMediaUrls = diary.mediaUrls // Đã thêm: Load lại URL ảnh từ bài viết cũ
             }
             isLoading = false
         }
@@ -60,7 +80,7 @@ fun AddEditDiaryScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { 
+                title = {
                     Text(
                         if (diaryId == null) "Viết nhật ký" else "Chỉnh sửa",
                         style = MaterialTheme.typography.titleLarge.copy(
@@ -68,7 +88,7 @@ fun AddEditDiaryScreen(
                             fontFamily = FontFamily.Serif,
                             color = Color.Black
                         )
-                    ) 
+                    )
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -88,8 +108,8 @@ fun AddEditDiaryScreen(
                                         content = content,
                                         mood = mood,
                                         tags = emptyList(),
-                                        imageUris = emptyList(),
-                                        existingMediaUrls = emptyList()
+                                        imageUris = selectedImageUris.toList(), // Đã sửa: Truyền URI thực tế thay vì emptyList
+                                        existingMediaUrls = existingMediaUrls   // Đã sửa: Truyền danh sách url cũ thay vì emptyList
                                     ) { success ->
                                         isLoading = false
                                         if (success) onBack()
@@ -103,7 +123,7 @@ fun AddEditDiaryScreen(
                             CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                         } else {
                             Text(
-                                "Lưu", 
+                                "Lưu",
                                 fontWeight = FontWeight.ExtraBold,
                                 style = MaterialTheme.typography.titleMedium,
                                 color = if (content.isNotEmpty()) MaterialTheme.colorScheme.primary else Color.Gray
@@ -125,6 +145,32 @@ fun AddEditDiaryScreen(
         ) {
             // FIXED HEADER AREA
             Column(modifier = Modifier.padding(top = 16.dp)) {
+
+                // Đã thêm: Khối hiển thị ảnh xem trước (Preview) ở ngay bên trên Tâm trạng
+                if (selectedImageUris.isNotEmpty()) {
+                    AsyncImage(
+                        model = selectedImageUris.first(),
+                        contentDescription = "Selected Image",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp)
+                            .padding(bottom = 16.dp)
+                            .clip(RoundedCornerShape(16.dp)),
+                        contentScale = ContentScale.Crop
+                    )
+                } else if (existingMediaUrls.isNotEmpty()) {
+                    AsyncImage(
+                        model = existingMediaUrls.first(),
+                        contentDescription = "Existing Image",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp)
+                            .padding(bottom = 16.dp)
+                            .clip(RoundedCornerShape(16.dp)),
+                        contentScale = ContentScale.Crop
+                    )
+                }
+
                 Text(
                     text = "Tâm trạng hiện tại",
                     style = MaterialTheme.typography.titleSmall.copy(
@@ -133,19 +179,19 @@ fun AddEditDiaryScreen(
                     ),
                     modifier = Modifier.padding(bottom = 12.dp)
                 )
-                
+
                 MoodSelectorModern(selectedMood = mood) { mood = it }
-                
+
                 Spacer(modifier = Modifier.height(24.dp))
 
                 TextField(
                     value = title,
                     onValueChange = { title = it },
-                    placeholder = { 
+                    placeholder = {
                         Text(
-                            "Tiêu đề của bạn...", 
+                            "Tiêu đề của bạn...",
                             style = MaterialTheme.typography.headlineSmall.copy(color = Color.Gray.copy(alpha = 0.5f))
-                        ) 
+                        )
                     },
                     modifier = Modifier.fillMaxWidth(),
                     textStyle = MaterialTheme.typography.headlineSmall.copy(
@@ -163,14 +209,14 @@ fun AddEditDiaryScreen(
                     ),
                     singleLine = true
                 )
-                
+
                 HorizontalDivider(
                     color = Color.Black.copy(alpha = 0.1f),
                     thickness = 1.dp,
                     modifier = Modifier.padding(vertical = 8.dp)
                 )
             }
-            
+
             // SCROLLABLE CONTENT AREA
             Box(
                 modifier = Modifier
@@ -180,11 +226,11 @@ fun AddEditDiaryScreen(
                 TextField(
                     value = content,
                     onValueChange = { content = it },
-                    placeholder = { 
+                    placeholder = {
                         Text(
-                            "Hôm nay của bạn thế nào?", 
+                            "Hôm nay của bạn thế nào?",
                             style = MaterialTheme.typography.bodyLarge.copy(color = Color.Gray.copy(alpha = 0.5f))
-                        ) 
+                        )
                     },
                     modifier = Modifier.fillMaxSize(),
                     textStyle = MaterialTheme.typography.bodyLarge.copy(
@@ -202,7 +248,7 @@ fun AddEditDiaryScreen(
                     )
                 )
             }
-            
+
             Spacer(modifier = Modifier.height(16.dp))
         }
     }
@@ -211,9 +257,9 @@ fun AddEditDiaryScreen(
 @Composable
 fun MoodSelectorModern(selectedMood: String, onMoodSelected: (String) -> Unit) {
     val moods = listOf(
-        "Vui" to "😊", 
-        "Bình thường" to "😐", 
-        "Buồn" to "😔", 
+        "Vui" to "😊",
+        "Bình thường" to "😐",
+        "Buồn" to "😔",
         "Tức giận" to "😠"
     )
     Row(
@@ -227,10 +273,10 @@ fun MoodSelectorModern(selectedMood: String, onMoodSelected: (String) -> Unit) {
                 shape = RoundedCornerShape(16.dp),
                 color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color.Transparent,
                 modifier = Modifier.weight(1f),
-                border = if (isSelected) 
-                    androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary) 
-                else 
-                    androidx.compose.foundation.BorderStroke(1.dp, Color.Black.copy(alpha = 0.1f))
+                border = if (isSelected)
+                    BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+                else
+                    BorderStroke(1.dp, Color.Black.copy(alpha = 0.1f))
             ) {
                 Column(
                     modifier = Modifier.padding(vertical = 12.dp),
