@@ -21,6 +21,7 @@ import com.example.nhatky.ui.screens.LoginScreen
 import com.example.nhatky.ui.screens.NoteWallScreen
 import com.example.nhatky.ui.screens.PhotoEditScreen
 import com.example.nhatky.ui.screens.RegisterScreen
+import com.example.nhatky.ui.screens.SettingsScreen
 import com.example.nhatky.ui.theme.Theme
 import com.example.nhatky.viewmodel.AuthViewModel
 import com.example.nhatky.viewmodel.DiaryViewModel
@@ -92,6 +93,23 @@ fun AppNavigation() {
                 },
                 onPickPhoto = { encodedUri ->
                     navController.navigate("photo_edit_screen/$encodedUri")
+                },
+                onNavigateToSettings = {
+                    navController.navigate("settings")
+                }
+            )
+        }
+
+        composable("settings") {
+            SettingsScreen(
+                authViewModel = authViewModel,
+                onLogout = {
+                    navController.navigate("login") {
+                        popUpTo(0) { inclusive = true }
+                    }
+                },
+                onNavigateBack = {
+                    navController.popBackStack()
                 }
             )
         }

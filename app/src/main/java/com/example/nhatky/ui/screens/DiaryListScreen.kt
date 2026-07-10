@@ -44,6 +44,7 @@ fun DiaryListScreen(
     onOpenWall: (String) -> Unit,
     onTakePhoto: () -> Unit,
     onPickPhoto: (String) -> Unit,
+    onNavigateToSettings: () -> Unit,
 ) {
     val context = LocalContext.current
     val user by authViewModel.currentUser.collectAsState()
@@ -98,12 +99,12 @@ fun DiaryListScreen(
                     }
 
                     IconButton(
-                        onClick = { authViewModel.logout() },
+                        onClick = onNavigateToSettings,
                         modifier = Modifier
                             .background(MaterialTheme.colorScheme.surface, CircleShape)
                             .size(48.dp)
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = "Logout", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Default.Settings, contentDescription = "Settings", tint = MaterialTheme.colorScheme.primary)
                     }
                 }
 
