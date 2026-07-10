@@ -6,7 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.nhatky.data.model.DiaryEntry
 import com.example.nhatky.data.repository.DiaryRepository
-import com.example.nhatky.ui.utils.MediaHelper // Hãy thay bằng đường dẫn đúng tới thư mục của MediaHelper
+import com.example.nhatky.ui.utils.MediaHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -27,7 +27,7 @@ sealed class DiaryUiState {
 @HiltViewModel
 class DiaryViewModel @Inject constructor(
     private val repository: DiaryRepository,
-    private val mediaHelper: MediaHelper // Tiêm MediaHelper thay vì tiêm Context
+    private val mediaHelper: MediaHelper
 ) : ViewModel() {
     private val TAG = "DiaryViewModel"
     private val _uiState = MutableStateFlow<DiaryUiState>(DiaryUiState.Loading)
@@ -46,18 +46,25 @@ class DiaryViewModel @Inject constructor(
     fun loadDiaries(userId: String) {
         viewModelScope.launch {
             _uiState.value = DiaryUiState.Loading
+
+            // 1. CHẠY NGẦM VIỆC PHỤC HỒI DỮ LIỆU TỪ FIREBASE
+            // Nếu người dùng xóa app và đăng nhập lại, database máy trống,
+            // hàm này sẽ tự động tải các bản ghi cũ trên Cloud về Room
+            launch(Dispatchers.IO) {
+                repository.fetchFromCloudToLocal(userId)
+            }
+
+            // 2. LOAD DỮ LIỆU TỪ MÁY (ROOM) LÊN UI
             try {
                 repository.getDiaries(userId, _searchQuery.value)
                     .map { diaries ->
-                        // Việc groupBy được xử lý tách biệt với collect
                         diaries.groupBy { dateFormatter.format(Date(it.timestamp)) }
                     }
-                    .flowOn(Dispatchers.Default) // Chạy tác vụ biến đổi (groupBy) trên Background Thread
+                    .flowOn(Dispatchers.Default)
                     .catch { e ->
                         _uiState.value = DiaryUiState.Error(e.message ?: "Lỗi tải dữ liệu")
                     }
                     .collect { grouped ->
-                        // Collect chạy trên UI Thread (Main)
                         _uiState.value = DiaryUiState.SuccessGrouped(grouped)
                     }
             } catch (e: Exception) {
@@ -81,7 +88,6 @@ class DiaryViewModel @Inject constructor(
             try {
                 Log.d(TAG, "addOrUpdateDiary: Bắt đầu. Số lượng file: ${imageUris.size}")
 
-                // Khởi tạo tiến trình Upload song song (Concurrent Upload)
                 val uploadDeferreds = imageUris.map { uri ->
                     async {
                         val isVideo = mediaHelper.isVideoUri(uri)
@@ -90,10 +96,8 @@ class DiaryViewModel @Inject constructor(
                     }
                 }
 
-                // Chờ tất cả file upload xong cùng lúc
                 val uploadResults = uploadDeferreds.awaitAll()
 
-                // Kiểm tra xem có file nào bị lỗi (trả về rỗng) không
                 if (uploadResults.any { it.isEmpty() }) {
                     Log.e(TAG, "Có ít nhất một file upload thất bại.")
                     onComplete(false)
@@ -115,7 +119,6 @@ class DiaryViewModel @Inject constructor(
                     timestamp = existingDiary?.timestamp ?: System.currentTimeMillis()
                 )
 
-                // Gọi repository và xử lý lỗi thông qua Result
                 val result = if (diaryId == null) {
                     repository.addDiary(diary)
                 } else {
@@ -126,7 +129,7 @@ class DiaryViewModel @Inject constructor(
                     onComplete(true)
                 } else {
                     Log.e(TAG, "Lưu thất bại do lỗi phía Database hoặc Mạng")
-                    onComplete(false) // Có thể tuỳ biến để bắn thông báo Toast trên UI
+                    onComplete(false)
                 }
 
             } catch (e: Exception) {
@@ -144,7 +147,6 @@ class DiaryViewModel @Inject constructor(
         viewModelScope.launch {
             val result = repository.deleteDiary(diaryId)
             if (result.isFailure) {
-                // Tuỳ thuộc vào yêu cầu, bạn có thể truyền lỗi xuống UI state ở đây
                 Log.e(TAG, "Lỗi không thể xoá nhật ký: ${result.exceptionOrNull()?.message}")
             }
         }

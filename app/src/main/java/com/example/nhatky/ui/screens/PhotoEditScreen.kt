@@ -59,11 +59,18 @@ import kotlin.math.roundToInt
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.imageLoader
+import coil.request.ImageRequest
 import com.example.nhatky.ui.utils.checkAndRequestDrivePermission
 import com.example.nhatky.ui.utils.rememberDrivePermissionLauncher
 import com.example.nhatky.viewmodel.AuthViewModel
 import com.example.nhatky.viewmodel.DiaryViewModel
 import android.widget.Toast
+import com.example.nhatky.data.model.DiaryEntry
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 
@@ -85,10 +92,20 @@ data class TextOverlay(
     var rotation: Float = 0f
 )
 
+// HÀM HỖ TRỢ: Chuyển đổi googledrive:// thành Link HTTP thật
+private fun getRealDriveUrl(url: String): String {
+    if (url.startsWith("googledrive://")) {
+        val id = url.substringAfter("googledrive://").substringBeforeLast(".")
+        return "https://www.googleapis.com/drive/v3/files/$id?alt=media"
+    }
+    return url
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PhotoEditScreen(
     imageUri: Uri,
+    diaryId: String? = null,
     authViewModel: AuthViewModel,
     diaryViewModel: DiaryViewModel,
     onSave: () -> Unit,
@@ -96,6 +113,10 @@ fun PhotoEditScreen(
 ) {
     val context = LocalContext.current
     val user by authViewModel.currentUser.collectAsState()
+
+    // 1. Chuyển đổi ảnh ra link thực tế để hệ thống đọc được
+    val realImageUriStr = remember(imageUri) { getRealDriveUrl(imageUri.toString()) }
+    val realImageUri = Uri.parse(realImageUriStr)
 
     val drivePermissionLauncher = rememberDrivePermissionLauncher { success ->
         if (success) {
@@ -105,10 +126,10 @@ fun PhotoEditScreen(
         }
     }
 
-    // BIẾN QUAN TRỌNG: Kiểm tra xem Uri truyền vào là Ảnh hay Video
+    // Kiểm tra định dạng Video
     val isVideo = remember(imageUri) {
-        val mimeType = context.contentResolver.getType(imageUri)
-        mimeType?.startsWith("video") == true || imageUri.toString().contains("video") || imageUri.toString().endsWith(".mp4")
+        val urlStr = imageUri.toString().lowercase()
+        urlStr.endsWith(".mp4") || context.contentResolver.getType(imageUri)?.startsWith("video") == true
     }
 
     var currentPath by remember { mutableStateOf<DrawPath?>(null) }
@@ -126,6 +147,14 @@ fun PhotoEditScreen(
     var editingTextId by remember { mutableStateOf<Long?>(null) }
 
     val colors = listOf(Color.Red, Color.Blue, Color.Green, Color.Yellow, Color.Black, Color.White)
+
+    var existingDiary by remember { mutableStateOf<DiaryEntry?>(null) }
+
+    LaunchedEffect(diaryId) {
+        if (diaryId != null) {
+            existingDiary = diaryViewModel.getDiaryById(diaryId)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -145,15 +174,14 @@ fun PhotoEditScreen(
                                 isLoading = true
                                 user?.uid?.let { uid ->
                                     if (isVideo) {
-                                        // LƯU VIDEO: Không qua flattenImage, lưu trực tiếp URL
                                         diaryViewModel.addOrUpdateDiary(
-                                            diaryId = null,
+                                            diaryId = diaryId,
                                             userId = uid,
-                                            title = "Kỷ niệm Video",
-                                            content = "Video kỷ niệm",
-                                            mood = "Bình thường",
-                                            tags = emptyList(),
-                                            imageUris = listOf(imageUri),
+                                            title = existingDiary?.title ?: "Kỷ niệm Video",
+                                            content = existingDiary?.content ?: "Video kỷ niệm",
+                                            mood = existingDiary?.mood ?: "Bình thường",
+                                            tags = existingDiary?.tags ?: emptyList(),
+                                            imageUris = listOf(realImageUri), // Truyền link đã convert
                                             existingMediaUrls = emptyList(),
                                             onComplete = { success ->
                                                 isLoading = false
@@ -165,36 +193,40 @@ fun PhotoEditScreen(
                                             }
                                         )
                                     } else {
-                                        // LƯU ẢNH: Trộn Canvas Vẽ/Chữ thành 1 file ảnh
-                                        val editedUri = flattenImage(
-                                            context = context,
-                                            originalUri = imageUri,
-                                            paths = paths,
-                                            texts = texts,
-                                            canvasSize = canvasSize
-                                        )
-
-                                        if (editedUri != null) {
-                                            diaryViewModel.addOrUpdateDiary(
-                                                diaryId = null,
-                                                userId = uid,
-                                                title = "Kỷ niệm ảnh",
-                                                content = "Kỷ niệm ảnh đã chỉnh sửa",
-                                                mood = "Bình thường",
-                                                tags = emptyList(),
-                                                imageUris = listOf(editedUri),
-                                                existingMediaUrls = emptyList(),
-                                                onComplete = { success ->
-                                                    isLoading = false
-                                                    if (success) {
-                                                        onSave()
-                                                    } else {
-                                                        Toast.makeText(context, "Lỗi upload Ảnh lên Drive! (Chưa bật API Drive hoặc sai mã SHA-1)", Toast.LENGTH_LONG).show()
-                                                    }
-                                                }
+                                        CoroutineScope(Dispatchers.IO).launch {
+                                            val editedUri = flattenImage(
+                                                context = context,
+                                                originalUri = realImageUri, // Đưa link thật vào để tải
+                                                paths = paths,
+                                                texts = texts,
+                                                canvasSize = canvasSize
                                             )
-                                        } else {
-                                            isLoading = false
+
+                                            withContext(Dispatchers.Main) {
+                                                if (editedUri != null) {
+                                                    diaryViewModel.addOrUpdateDiary(
+                                                        diaryId = diaryId,
+                                                        userId = uid,
+                                                        title = existingDiary?.title ?: "Kỷ niệm ảnh",
+                                                        content = existingDiary?.content ?: "Kỷ niệm ảnh đã chỉnh sửa",
+                                                        mood = existingDiary?.mood ?: "Bình thường",
+                                                        tags = existingDiary?.tags ?: emptyList(),
+                                                        imageUris = listOf(editedUri),
+                                                        existingMediaUrls = emptyList(),
+                                                        onComplete = { success ->
+                                                            isLoading = false
+                                                            if (success) {
+                                                                onSave()
+                                                            } else {
+                                                                Toast.makeText(context, "Lỗi upload Ảnh lên Drive! (Chưa bật API Drive hoặc sai mã SHA-1)", Toast.LENGTH_LONG).show()
+                                                            }
+                                                        }
+                                                    )
+                                                } else {
+                                                    isLoading = false
+                                                    Toast.makeText(context, "Lỗi khi lưu ảnh, vui lòng thử lại", Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -212,7 +244,6 @@ fun PhotoEditScreen(
             )
         },
         bottomBar = {
-            // ẨN THANH CÔNG CỤ VẼ NẾU LÀ VIDEO
             if (!isVideo) {
                 Surface(
                     tonalElevation = 8.dp,
@@ -309,27 +340,22 @@ fun PhotoEditScreen(
             contentAlignment = Alignment.Center
         ) {
             if (isVideo) {
-                // TRÌNH PHÁT VIDEO VỚI THANH THỜI GIAN
                 AndroidView(
                     factory = { ctx ->
                         VideoView(ctx).apply {
-                            setVideoURI(imageUri)
-
-                            // Thêm MediaController để người dùng có thể tua Video (thanh thời gian)
+                            setVideoURI(realImageUri) // Dùng realImageUri
                             val mediaController = MediaController(ctx)
                             mediaController.setAnchorView(this)
                             setMediaController(mediaController)
-
                             setOnPreparedListener { mp ->
                                 mp.isLooping = true
-                                start() // Tự động phát khi tải xong
+                                start()
                             }
                         }
                     },
                     modifier = Modifier.fillMaxWidth().aspectRatio(3f / 4f)
                 )
             } else {
-                // TRÌNH CHỈNH SỬA ẢNH (Giữ nguyên như cũ)
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -397,8 +423,9 @@ fun PhotoEditScreen(
                             }
                         }
                 ) {
+                    // Dùng realImageUri để hiển thị ảnh.
                     AsyncImage(
-                        model = imageUri,
+                        model = realImageUri,
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Fit
@@ -448,7 +475,6 @@ fun PhotoEditScreen(
                         )
                     }
 
-                    // Text Layers
                     val sortedTexts = texts.sortedBy { if (it.id == editingTextId) 1 else 0 }
 
                     sortedTexts.forEach { textOverlay ->
@@ -642,7 +668,8 @@ enum class EditMode { DRAW, TEXT, ERASE }
 
 enum class ActionType { DRAW, TEXT }
 
-fun flattenImage(
+// NÂNG CẤP HÀM FLATTEN THÀNH SUSPEND VÀ SỬ DỤNG COIL IMAGELOADER
+suspend fun flattenImage(
     context: Context,
     originalUri: Uri,
     paths: List<DrawPath>,
@@ -652,8 +679,21 @@ fun flattenImage(
     if (canvasSize.width == 0 || canvasSize.height == 0) return null
 
     return try {
-        val inputStream = context.contentResolver.openInputStream(originalUri)
-        val originalBitmap = BitmapFactory.decodeStream(inputStream)
+        // Sử dụng thư viện Coil để tải ảnh qua mạng an toàn (đã bao gồm Auth qua Interceptor)
+        val originalBitmap: Bitmap? = if (originalUri.toString().startsWith("http")) {
+            val request = ImageRequest.Builder(context)
+                .data(originalUri.toString())
+                .allowHardware(false) // Bắt buộc false để Canvas có thể vẽ đè lên
+                .build()
+            val result = context.imageLoader.execute(request)
+            (result.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap
+        } else {
+            // Đọc ảnh nội bộ trong máy nếu là ảnh mới chụp từ Camera
+            val inputStream = context.contentResolver.openInputStream(originalUri)
+            if (inputStream != null) BitmapFactory.decodeStream(inputStream) else null
+        }
+
+        if (originalBitmap == null) return null
 
         val resultBitmap = Bitmap.createBitmap(originalBitmap.width, originalBitmap.height, Bitmap.Config.ARGB_8888)
         val canvas = android.graphics.Canvas(resultBitmap)
