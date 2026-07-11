@@ -1,5 +1,6 @@
 package com.example.nhatky.ui.components
 
+import android.util.Log
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.annotation.OptIn
@@ -21,11 +22,11 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.google.android.gms.auth.api.signin.GoogleSignIn
@@ -33,104 +34,141 @@ import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccoun
 import com.google.api.services.drive.DriveScopes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
 import java.util.Collections
 
 @OptIn(UnstableApi::class)
+@Composable
+fun VideoPlayerView(
+    videoUrl: String,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    var isLoading by remember { mutableStateOf(true) }
+    
+    // 1. Khởi tạo ExoPlayer duy nhất một lần và ghi nhớ nó
+    val exoPlayer = remember {
+        ExoPlayer.Builder(context)
+            .setLoadControl(DefaultLoadControl.Builder()
+                .setBufferDurationsMs(32000, 64000, 1500, 2000).build())
+            .build().apply {
+                videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT
+                repeatMode = Player.REPEAT_MODE_ONE
+                playWhenReady = true
+                
+                addListener(object : Player.Listener {
+                    override fun onPlaybackStateChanged(playbackState: Int) {
+                        isLoading = playbackState == Player.STATE_BUFFERING || playbackState == Player.STATE_IDLE
+                    }
+
+                    override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                        Log.e("VideoPlayer", "Lỗi phát Video: ${error.message}", error)
+                        isLoading = false
+                    }
+                })
+            }
+    }
+
+    // 2. Giải phóng ExoPlayer khi Composable bị hủy hoàn toàn
+    DisposableEffect(Unit) {
+        onDispose {
+            exoPlayer.release()
+        }
+    }
+
+    // 3. Theo dõi sự thay đổi của videoUrl để tải nội dung mới
+    LaunchedEffect(videoUrl) {
+        isLoading = true
+        val isGoogleDriveUrl = videoUrl.contains("googleapis.com")
+        
+        var token: String? = null
+        if (isGoogleDriveUrl) {
+            withContext(Dispatchers.IO) {
+                try {
+                    val account = GoogleSignIn.getLastSignedInAccount(context)
+                    if (account != null) {
+                        val credential = GoogleAccountCredential.usingOAuth2(
+                            context, Collections.singleton(DriveScopes.DRIVE_FILE)
+                        )
+                        credential.selectedAccount = account.account
+                        token = credential.token
+                    }
+                } catch (e: Exception) {
+                    Log.e("VideoPlayer", "Lỗi lấy token Drive: ${e.message}")
+                }
+                Unit
+            }
+        }
+
+        // Cấu hình MediaSource dựa trên loại URL
+        val okHttpClient = OkHttpClient.Builder().build()
+        val okHttpDataSourceFactory = OkHttpDataSource.Factory(okHttpClient).apply {
+            if (isGoogleDriveUrl && !token.isNullOrEmpty()) {
+                setDefaultRequestProperties(mapOf("Authorization" to "Bearer $token"))
+            }
+        }
+        val dataSourceFactory = DefaultDataSource.Factory(context, okHttpDataSourceFactory)
+        val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
+        
+        val finalUrl = if (isGoogleDriveUrl) {
+            if (videoUrl.contains("alt=media")) videoUrl else {
+                if (videoUrl.contains("?")) "$videoUrl&alt=media" else "$videoUrl?alt=media"
+            }
+        } else {
+            videoUrl
+        }
+
+        val mediaItem = MediaItem.fromUri(finalUrl)
+        val mediaSource = mediaSourceFactory.createMediaSource(mediaItem)
+
+        // Thực hiện gán mediaSource và prepare trên Main Thread
+        exoPlayer.stop()
+        exoPlayer.setMediaSource(mediaSource)
+        exoPlayer.prepare()
+    }
+
+    Box(
+        modifier = modifier.background(Color.Black),
+        contentAlignment = Alignment.Center
+    ) {
+        AndroidView(
+            factory = { ctx ->
+                PlayerView(ctx).apply {
+                    player = exoPlayer
+                    useController = true
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    layoutParams = FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                }
+            },
+            update = { view ->
+                view.player = exoPlayer
+            },
+            modifier = Modifier.fillMaxSize()
+        )
+
+        if (isLoading) {
+            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+        }
+    }
+}
+
 @Composable
 fun VideoPlayerDialog(
     videoUrl: String,
     onDismiss: () -> Unit
 ) {
-    val context = LocalContext.current
-    var isLoading by remember { mutableStateOf(true) }
-    var exoPlayer by remember { mutableStateOf<ExoPlayer?>(null) }
-
-    LaunchedEffect(videoUrl) {
-        withContext(Dispatchers.IO) {
-            // 1. Lấy Token đăng nhập của người dùng dưới chế độ nền (IO Thread)
-            var token: String? = null
-            try {
-                val account = GoogleSignIn.getLastSignedInAccount(context)
-                if (account != null) {
-                    val credential = GoogleAccountCredential.usingOAuth2(
-                        context, Collections.singleton(DriveScopes.DRIVE_FILE)
-                    )
-                    credential.selectedAccount = account.account
-                    token = credential.token
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-
-            // 2. Chuyển lên Main Thread để cấu hình Trình phát Video
-            withContext(Dispatchers.Main) {
-                val loadControl = DefaultLoadControl.Builder()
-                    .setBufferDurationsMs(32000, 64000, 2500, 5000).build()
-                val extractorsFactory = DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true)
-
-                // 3. NẠP CHÌA KHÓA BẢO MẬT VÀO NGUỒN TẢI VIDEO
-                val dataSourceFactory = DefaultHttpDataSource.Factory().apply {
-                    if (!token.isNullOrEmpty()) {
-                        setDefaultRequestProperties(mapOf("Authorization" to "Bearer $token"))
-                    }
-                }
-
-                val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory, extractorsFactory)
-
-                exoPlayer = ExoPlayer.Builder(context)
-                    .setMediaSourceFactory(mediaSourceFactory)
-                    .setLoadControl(loadControl)
-                    .build().apply {
-                        setMediaItem(MediaItem.fromUri(videoUrl))
-                        videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT
-                        prepare()
-                        playWhenReady = true
-                        addListener(object : Player.Listener {
-                            override fun onPlaybackStateChanged(playbackState: Int) {
-                                isLoading = playbackState == Player.STATE_BUFFERING
-                            }
-                        })
-                    }
-            }
-        }
-    }
-
-    DisposableEffect(exoPlayer) {
-        onDispose {
-            exoPlayer?.release()
-        }
-    }
-
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black),
-            contentAlignment = Alignment.Center
-        ) {
-            if (exoPlayer != null) {
-                AndroidView(
-                    factory = { ctx ->
-                        PlayerView(ctx).apply {
-                            player = exoPlayer
-                            useController = true
-                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                            layoutParams = FrameLayout.LayoutParams(
-                                ViewGroup.LayoutParams.MATCH_PARENT,
-                                ViewGroup.LayoutParams.MATCH_PARENT
-                            )
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-
-            if (isLoading) {
-                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-            }
+        Box(modifier = Modifier.fillMaxSize()) {
+            VideoPlayerView(
+                videoUrl = videoUrl,
+                modifier = Modifier.fillMaxSize()
+            )
 
             IconButton(
                 onClick = onDismiss,

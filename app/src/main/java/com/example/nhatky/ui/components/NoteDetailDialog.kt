@@ -15,6 +15,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.nhatky.data.model.DiaryEntry
+import android.net.Uri
+
+// HÀM HỖ TRỢ: Chuyển đổi googledrive:// thành Link HTTP thật
+private fun getRealDriveUrl(url: String): String {
+    if (url.startsWith("googledrive://")) {
+        val id = url.substringAfter("googledrive://").substringBeforeLast(".")
+        return "https://www.googleapis.com/drive/v3/files/$id?alt=media"
+    }
+    return url
+}
 
 @Composable
 fun NoteDetailDialog(
@@ -38,12 +48,22 @@ fun NoteDetailDialog(
                 modifier = Modifier.padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                StickyNote(
-                    diary = diary,
-                    onClick = {},
-                    scaledDown = false,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                if (diary.mediaUrls.isNotEmpty() && diary.mediaUrls.first().endsWith(".mp4", ignoreCase = true)) {
+                    val videoUrl = getRealDriveUrl(diary.mediaUrls.first())
+                    VideoPlayerView(
+                        videoUrl = videoUrl,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
+                    )
+                } else {
+                    StickyNote(
+                        diary = diary,
+                        onClick = {},
+                        scaledDown = false,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
                 
                 Spacer(modifier = Modifier.height(24.dp))
                 

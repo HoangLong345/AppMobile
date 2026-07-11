@@ -73,7 +73,8 @@ fun DiaryListScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.background)
-                    .padding(top = 16.dp)
+                    .statusBarsPadding()
+                    .padding(top = 24.dp, bottom = 8.dp)
             ) {
                 Row(
                     modifier = Modifier
@@ -82,7 +83,7 @@ fun DiaryListScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "Kỷ niệm mỗi ngày",
                             style = MaterialTheme.typography.headlineMedium.copy(
@@ -91,6 +92,7 @@ fun DiaryListScreen(
                             ),
                             color = MaterialTheme.colorScheme.onBackground
                         )
+                        Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = "Nhấn vào mỗi ngày để xem chi tiết",
                             style = MaterialTheme.typography.bodyMedium,
@@ -104,7 +106,11 @@ fun DiaryListScreen(
                             .background(MaterialTheme.colorScheme.surface, CircleShape)
                             .size(48.dp)
                     ) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings", tint = MaterialTheme.colorScheme.primary)
+                        Icon(
+                            Icons.Default.Settings,
+                            contentDescription = "Settings",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
                     }
                 }
 
@@ -210,20 +216,25 @@ fun DailySummaryCard(dateKey: String, entryCount: Int, onClick: () -> Unit) {
 @Composable
 fun SearchBarModern(query: String, onQueryChange: (String) -> Unit) {
     Surface(
-        modifier = Modifier.fillMaxWidth().padding(20.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 12.dp),
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 1.dp
+        shadowElevation = 0.dp,
+        tonalElevation = 2.dp
     ) {
         TextField(
             value = query,
             onValueChange = onQueryChange,
-            placeholder = { Text("Tìm kiếm kỷ niệm...", color = Color.Gray) },
+            placeholder = { Text("Tìm kiếm kỷ niệm...", color = Color.Gray.copy(alpha = 0.6f)) },
             leadingIcon = { Icon(Icons.Default.Search, null, tint = MaterialTheme.colorScheme.primary) },
             modifier = Modifier.fillMaxWidth(),
             colors = TextFieldDefaults.colors(
-                focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent,
-                focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent,
+                focusedContainerColor = Color.Transparent,
+                unfocusedContainerColor = Color.Transparent,
+                focusedIndicatorColor = Color.Transparent,
+                unfocusedIndicatorColor = Color.Transparent,
             ),
             singleLine = true
         )

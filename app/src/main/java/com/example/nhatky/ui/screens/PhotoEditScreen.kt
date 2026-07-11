@@ -8,8 +8,6 @@ import android.net.Uri
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
-import android.widget.MediaController
-import android.widget.VideoView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -67,6 +65,7 @@ import com.example.nhatky.viewmodel.AuthViewModel
 import com.example.nhatky.viewmodel.DiaryViewModel
 import android.widget.Toast
 import com.example.nhatky.data.model.DiaryEntry
+import com.example.nhatky.ui.components.VideoPlayerView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -340,20 +339,11 @@ fun PhotoEditScreen(
             contentAlignment = Alignment.Center
         ) {
             if (isVideo) {
-                AndroidView(
-                    factory = { ctx ->
-                        VideoView(ctx).apply {
-                            setVideoURI(realImageUri) // Dùng realImageUri
-                            val mediaController = MediaController(ctx)
-                            mediaController.setAnchorView(this)
-                            setMediaController(mediaController)
-                            setOnPreparedListener { mp ->
-                                mp.isLooping = true
-                                start()
-                            }
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth().aspectRatio(3f / 4f)
+                VideoPlayerView(
+                    videoUrl = realImageUri.toString(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(3f / 4f)
                 )
             } else {
                 Box(

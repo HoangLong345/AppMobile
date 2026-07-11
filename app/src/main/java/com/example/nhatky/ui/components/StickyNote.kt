@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BrokenImage
+import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -26,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
+import coil.decode.VideoFrameDecoder
 import com.example.nhatky.data.model.DiaryEntry
 import java.text.SimpleDateFormat
 import java.util.*
@@ -60,6 +62,9 @@ fun StickyNote(
             .clickable(onClick = onClick)
     ) {
         if (diary.mediaUrls.isNotEmpty()) {
+            val mediaUrl = diary.mediaUrls.first()
+            val isVideo = mediaUrl.endsWith(".mp4", ignoreCase = true)
+
             // Pinned Photo Style
             Surface(
                 color = Color.White,
@@ -68,43 +73,55 @@ fun StickyNote(
             ) {
                 Column(modifier = Modifier.padding(if (scaledDown) 6.dp else 12.dp)) {
 
-                    val realUrl = getRealDriveUrl(diary.mediaUrls.first())
+                    val realUrl = getRealDriveUrl(mediaUrl)
 
-                    SubcomposeAsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(realUrl)
-                            .crossfade(true)
-                            .build(),
-                        contentDescription = null,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(1f),
-                        contentScale = ContentScale.Crop,
-                        loading = {
-                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(if (scaledDown) 16.dp else 32.dp),
-                                    color = MaterialTheme.colorScheme.primary,
-                                    strokeWidth = 2.dp
-                                )
+                    Box(contentAlignment = Alignment.Center) {
+                        SubcomposeAsyncImage(
+                            model = ImageRequest.Builder(LocalContext.current)
+                                .data(realUrl)
+                                .decoderFactory(VideoFrameDecoder.Factory())
+                                .crossfade(true)
+                                .build(),
+                            contentDescription = null,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(1f),
+                            contentScale = ContentScale.Crop,
+                            loading = {
+                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(if (scaledDown) 16.dp else 32.dp),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        strokeWidth = 2.dp
+                                    )
+                                }
+                            },
+                            error = {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(Color.LightGray.copy(alpha = 0.3f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.BrokenImage,
+                                        contentDescription = "Lỗi",
+                                        tint = Color.Gray,
+                                        modifier = Modifier.size(if (scaledDown) 24.dp else 48.dp)
+                                    )
+                                }
                             }
-                        },
-                        error = {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(Color.LightGray.copy(alpha = 0.3f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.BrokenImage,
-                                    contentDescription = "Lỗi",
-                                    tint = Color.Gray,
-                                    modifier = Modifier.size(if (scaledDown) 24.dp else 48.dp)
-                                )
-                            }
+                        )
+
+                        if (isVideo) {
+                            Icon(
+                                imageVector = Icons.Default.PlayCircle,
+                                contentDescription = "Video",
+                                tint = Color.White.copy(alpha = 0.8f),
+                                modifier = Modifier.size(if (scaledDown) 32.dp else 64.dp)
+                            )
                         }
-                    )
+                    }
 
                     Spacer(modifier = Modifier.height(if (scaledDown) 4.dp else 12.dp))
                     Text(
