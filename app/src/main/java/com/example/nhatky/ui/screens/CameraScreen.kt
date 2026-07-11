@@ -83,7 +83,11 @@ fun CameraScreen(
             
             IconButton(
                 onClick = onBack,
-                modifier = Modifier.padding(16.dp).align(Alignment.TopStart).background(Color.Black.copy(0.3f), CircleShape)
+                modifier = Modifier
+                    .statusBarsPadding()
+                    .padding(16.dp)
+                    .align(Alignment.TopStart)
+                    .background(Color.Black.copy(0.3f), CircleShape)
             ) {
                 Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
             }
