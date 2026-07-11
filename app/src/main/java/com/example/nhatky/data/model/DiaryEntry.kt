@@ -14,5 +14,5 @@ data class DiaryEntry(
     val mood: String = "Bình thường",
     val tags: List<String> = emptyList(),
     val mediaUrls: List<String> = emptyList(),
-    val isSynced: Boolean = false
+    val isSynced: Boolean = false // Cờ kiểm tra xem đã đồng bộ lên mây chưa
 )

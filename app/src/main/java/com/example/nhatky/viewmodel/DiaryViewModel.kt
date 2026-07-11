@@ -1,16 +1,18 @@
 package com.example.nhatky.viewmodel
 
+import android.content.Context
 import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.*
 import com.example.nhatky.data.model.DiaryEntry
 import com.example.nhatky.data.repository.DiaryRepository
 import com.example.nhatky.ui.utils.MediaHelper
+import com.example.nhatky.worker.SyncDiaryWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -19,7 +21,6 @@ import javax.inject.Inject
 
 sealed class DiaryUiState {
     object Loading : DiaryUiState()
-    data class Success(val diaries: List<DiaryEntry>) : DiaryUiState()
     data class SuccessGrouped(val groupedDiaries: Map<String, List<DiaryEntry>>) : DiaryUiState()
     data class Error(val message: String) : DiaryUiState()
 }
@@ -27,15 +28,14 @@ sealed class DiaryUiState {
 @HiltViewModel
 class DiaryViewModel @Inject constructor(
     private val repository: DiaryRepository,
-    private val mediaHelper: MediaHelper
+    private val mediaHelper: MediaHelper,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
-    private val TAG = "DiaryViewModel"
     private val _uiState = MutableStateFlow<DiaryUiState>(DiaryUiState.Loading)
     val uiState: StateFlow<DiaryUiState> = _uiState.asStateFlow()
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
-
     private val dateFormatter = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
 
     fun onSearchQueryChange(query: String, userId: String) {
@@ -46,29 +46,15 @@ class DiaryViewModel @Inject constructor(
     fun loadDiaries(userId: String) {
         viewModelScope.launch {
             _uiState.value = DiaryUiState.Loading
-
-            // 1. CHẠY NGẦM VIỆC PHỤC HỒI DỮ LIỆU TỪ FIREBASE
-            // Nếu người dùng xóa app và đăng nhập lại, database máy trống,
-            // hàm này sẽ tự động tải các bản ghi cũ trên Cloud về Room
-            launch(Dispatchers.IO) {
-                repository.fetchFromCloudToLocal(userId)
-            }
-
-            // 2. LOAD DỮ LIỆU TỪ MÁY (ROOM) LÊN UI
+            launch(Dispatchers.IO) { repository.fetchFromCloudToLocal(userId) }
             try {
                 repository.getDiaries(userId, _searchQuery.value)
-                    .map { diaries ->
-                        diaries.groupBy { dateFormatter.format(Date(it.timestamp)) }
-                    }
+                    .map { diaries -> diaries.groupBy { dateFormatter.format(Date(it.timestamp)) } }
                     .flowOn(Dispatchers.Default)
-                    .catch { e ->
-                        _uiState.value = DiaryUiState.Error(e.message ?: "Lỗi tải dữ liệu")
-                    }
-                    .collect { grouped ->
-                        _uiState.value = DiaryUiState.SuccessGrouped(grouped)
-                    }
+                    .catch { e -> _uiState.value = DiaryUiState.Error(e.message ?: "Lỗi tải dữ liệu") }
+                    .collect { grouped -> _uiState.value = DiaryUiState.SuccessGrouped(grouped) }
             } catch (e: Exception) {
-                _uiState.value = DiaryUiState.Error(e.message ?: "Lỗi không xác định")
+                _uiState.value = DiaryUiState.Error(e.message ?: "Lỗi hệ thống")
             }
         }
     }
@@ -86,26 +72,12 @@ class DiaryViewModel @Inject constructor(
     ) {
         viewModelScope.launch {
             try {
-                Log.d(TAG, "addOrUpdateDiary: Bắt đầu. Số lượng file: ${imageUris.size}")
-
-                val uploadDeferreds = imageUris.map { uri ->
-                    async {
-                        val isVideo = mediaHelper.isVideoUri(uri)
-                        Log.d(TAG, "Đang upload: $uri, isVideo: $isVideo")
-                        repository.uploadMedia(uri, isVideo)
-                    }
+                // Copy ảnh vào máy để Worker truy cập an toàn 100%
+                val safeLocalUris = imageUris.mapNotNull { uri ->
+                    mediaHelper.saveMediaToInternalStorage(uri)?.toString()
                 }
 
-                val uploadResults = uploadDeferreds.awaitAll()
-
-                if (uploadResults.any { it.isEmpty() }) {
-                    Log.e(TAG, "Có ít nhất một file upload thất bại.")
-                    onComplete(false)
-                    return@launch
-                }
-
-                val newMediaUrls = uploadResults.filter { it.isNotEmpty() }
-                val totalMediaUrls = existingMediaUrls + newMediaUrls
+                val totalMediaUrls = existingMediaUrls + safeLocalUris
                 val existingDiary = if (diaryId != null) repository.getEntryById(diaryId) else null
 
                 val diary = DiaryEntry(
@@ -116,27 +88,34 @@ class DiaryViewModel @Inject constructor(
                     mood = mood,
                     tags = tags,
                     mediaUrls = totalMediaUrls,
-                    timestamp = existingDiary?.timestamp ?: System.currentTimeMillis()
+                    timestamp = existingDiary?.timestamp ?: System.currentTimeMillis(),
+                    isSynced = false
                 )
 
-                val result = if (diaryId == null) {
-                    repository.addDiary(diary)
-                } else {
-                    repository.updateDiary(diary)
-                }
+                val result = if (diaryId == null) repository.addDiaryOffline(diary)
+                else repository.updateDiaryOffline(diary)
 
                 if (result.isSuccess) {
+                    scheduleSyncWork()
                     onComplete(true)
                 } else {
-                    Log.e(TAG, "Lưu thất bại do lỗi phía Database hoặc Mạng")
                     onComplete(false)
                 }
-
             } catch (e: Exception) {
-                Log.e(TAG, "Lỗi Catch trong addOrUpdateDiary: ${e.message}", e)
+                Log.e("DiaryViewModel", "Lỗi lưu: ${e.message}")
                 onComplete(false)
             }
         }
+    }
+
+    private fun scheduleSyncWork() {
+        val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
+        val syncRequest = OneTimeWorkRequestBuilder<SyncDiaryWorker>()
+            .setConstraints(constraints).build()
+
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            "SyncDiaryWork", ExistingWorkPolicy.REPLACE, syncRequest
+        )
     }
 
     suspend fun getDiaryById(diaryId: String): DiaryEntry? {
@@ -144,11 +123,6 @@ class DiaryViewModel @Inject constructor(
     }
 
     fun deleteDiary(diaryId: String) {
-        viewModelScope.launch {
-            val result = repository.deleteDiary(diaryId)
-            if (result.isFailure) {
-                Log.e(TAG, "Lỗi không thể xoá nhật ký: ${result.exceptionOrNull()?.message}")
-            }
-        }
+        viewModelScope.launch { repository.deleteDiary(diaryId) }
     }
 }
