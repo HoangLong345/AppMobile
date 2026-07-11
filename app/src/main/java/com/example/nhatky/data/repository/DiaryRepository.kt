@@ -33,50 +33,35 @@ class DiaryRepository @Inject constructor(
         return diaryDao.getEntryById(id)
     }
 
-    // Trả về Result để ViewModel bắt được lỗi
-    suspend fun addDiary(diary: DiaryEntry): Result<Unit> {
+    suspend fun addDiaryOffline(diary: DiaryEntry): Result<Unit> {
         return try {
             val id = if (diary.id.isEmpty()) UUID.randomUUID().toString() else diary.id
-            val newDiary = diary.copy(id = id)
-
-            // Save locally first
+            val newDiary = diary.copy(id = id, isSynced = false)
             diaryDao.insertEntry(newDiary)
-
-            // Try to sync with Firestore
-            diaryCollection.document(id).set(newDiary.copy(isSynced = true)).await()
-            diaryDao.updateEntry(newDiary.copy(isSynced = true))
-
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "Lỗi addDiary: ${e.message}", e)
+            Log.e(TAG, "Lỗi addDiaryOffline: ${e.message}", e)
             Result.failure(e)
         }
     }
 
-    // Trả về Result
-    suspend fun updateDiary(diary: DiaryEntry): Result<Unit> {
+    suspend fun updateDiaryOffline(diary: DiaryEntry): Result<Unit> {
         return try {
             diaryDao.updateEntry(diary.copy(isSynced = false))
-
-            diaryCollection.document(diary.id).set(diary.copy(isSynced = true)).await()
-            diaryDao.updateEntry(diary.copy(isSynced = true))
-
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "Lỗi updateDiary: ${e.message}", e)
+            Log.e(TAG, "Lỗi updateDiaryOffline: ${e.message}", e)
             Result.failure(e)
         }
     }
 
-    // Trả về Result
     suspend fun deleteDiary(diaryId: String): Result<Unit> {
         return try {
             val entry = diaryDao.getEntryById(diaryId)
             if (entry != null) {
                 diaryDao.deleteEntry(entry)
             }
-
-            diaryCollection.document(diaryId).delete().await()
+            try { diaryCollection.document(diaryId).delete().await() } catch (_: Exception) {}
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "Lỗi deleteDiary: ${e.message}", e)
@@ -85,38 +70,33 @@ class DiaryRepository @Inject constructor(
     }
 
     suspend fun uploadMedia(uri: Uri, isVideo: Boolean): String {
-        Log.d(TAG, "uploadMedia: Requesting GoogleDriveService for $uri")
-        val result = googleDriveService.uploadMedia(uri, isVideo) ?: ""
-        Log.d(TAG, "uploadMedia: GoogleDriveService returned $result")
-        return result
-    }
-
-    suspend fun syncWithCloud() {
-        val unsynced = diaryDao.getUnsyncedEntries()
-        unsynced.forEach { entry ->
-            try {
-                diaryCollection.document(entry.id).set(entry.copy(isSynced = true)).await()
-                diaryDao.updateEntry(entry.copy(isSynced = true))
-            } catch (e: Exception) {
-                Log.e(TAG, "Lỗi syncWithCloud cho mục ${entry.id}: ${e.message}")
-            }
+        return try {
+            googleDriveService.uploadMedia(uri, isVideo) ?: ""
+        } catch (e: Exception) {
+            Log.e(TAG, "Lỗi khi uploadMedia: ${e.message}")
+            ""
         }
     }
 
-    // TÍNH NĂNG MỚI: Phục hồi dữ liệu từ Firebase về điện thoại
+    suspend fun getUnsyncedEntries(): List<DiaryEntry> {
+        return diaryDao.getUnsyncedEntries()
+    }
+
+    suspend fun syncSingleEntryToCloud(entry: DiaryEntry) {
+        val entrySynced = entry.copy(isSynced = true)
+        diaryCollection.document(entry.id).set(entrySynced).await()
+        diaryDao.updateEntry(entrySynced)
+    }
+
     suspend fun fetchFromCloudToLocal(userId: String) {
         try {
-            // Tải dữ liệu của người dùng từ Cloud
             val snapshot = diaryCollection.whereEqualTo("userId", userId).get().await()
             val cloudEntries = snapshot.documents.mapNotNull { it.toObject(DiaryEntry::class.java) }
-
-            // Lưu đè/phục hồi tất cả vào Database cục bộ
             cloudEntries.forEach { entry ->
                 diaryDao.insertEntry(entry.copy(isSynced = true))
             }
-            Log.d(TAG, "Đã phục hồi thành công ${cloudEntries.size} bài nhật ký từ Cloud về máy.")
         } catch (e: Exception) {
-            Log.e(TAG, "Lỗi khi phục hồi dữ liệu từ Cloud: ${e.message}", e)
+            Log.e(TAG, "Lỗi fetchFromCloud: ${e.message}", e)
         }
     }
 }
